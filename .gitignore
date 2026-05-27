@@ -1,0 +1,23 @@
+# Visual Studio temporários e artefatos de compilação
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.user
+*.suo
+*.db
+*.opendb
+*.ipch
+*.aps
+*.ilk
+*.pdb
+*.tlog
+*.lastbuildstate
+*.obj
+*.log
+*.recipe
+*.exe
+
+# Arquivos locais de configuração (caso o usuário teste na pasta local)
+config.json
