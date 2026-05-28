@@ -180,6 +180,21 @@ int g_FlyoutTargetX = 0;
 int g_FlyoutTargetY = 0;
 int g_FlyoutMouseOutSeconds = 0;
 
+// Settings Window Globals
+HWND g_hSettingsWindow = NULL;
+HWND g_hSettingsChildWindow = NULL;
+int g_SettingsState = 0; // 0 = Closed, 1 = Opening, 2 = Open, 3 = Closing
+float g_SettingsAnimT = 0.0f;
+float g_SettingsOpenProgress = 0.0f;
+int g_SettingsAlpha = 0;
+
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK SettingsChildWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+void UpdateSettingsWindow();
+void DrawSettingsPanel(Graphics &graphics, int w, int h);
+
+#define APP_WM_START_FLYOUT_ANIM (WM_APP + 30)
+
 // Lyrics State
 struct LyricLine {
   int timeSeconds;
@@ -811,6 +826,7 @@ void FetchLyricsAsync(wstring track, wstring artist) {
   }
   if (g_hFlyoutWindow) {
     InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+    PostMessage(g_hFlyoutWindow, APP_WM_START_FLYOUT_ANIM, 0, 0);
   }
 
   std::thread([track, artist]() {
@@ -858,8 +874,10 @@ void FetchLyricsAsync(wstring track, wstring artist) {
                     g_HasLyrics = true;
                     g_IsFetchingLyrics = false;
                   }
-                  if (g_hFlyoutWindow)
+                  if (g_hFlyoutWindow) {
                     InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+                    PostMessage(g_hFlyoutWindow, APP_WM_START_FLYOUT_ANIM, 0, 0);
+                  }
 
                   if (g_TranslateLyrics) {
                     FetchTranslationThread();
@@ -1126,8 +1144,10 @@ void FetchLyricsAsync(wstring track, wstring artist) {
         g_HasLyrics = true;
         g_IsFetchingLyrics = false;
       }
-      if (g_hFlyoutWindow)
+      if (g_hFlyoutWindow) {
         InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+        PostMessage(g_hFlyoutWindow, APP_WM_START_FLYOUT_ANIM, 0, 0);
+      }
       if (g_TranslateLyrics) {
         FetchTranslationThread();
       }
@@ -1142,8 +1162,10 @@ void FetchLyricsAsync(wstring track, wstring artist) {
         g_HasLyrics = false;
       }
     }
-    if (g_hFlyoutWindow)
+    if (g_hFlyoutWindow) {
       InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+      PostMessage(g_hFlyoutWindow, APP_WM_START_FLYOUT_ANIM, 0, 0);
+    }
   }).detach();
 }
 
@@ -1808,7 +1830,7 @@ wstring GetLocalizedText(UIStringId id) {
     case UIStringId::LyricsHeader: return L"Letras";
     case UIStringId::TranslateButton: return L"Traduzir";
     case UIStringId::FetchingLyrics: return L"Buscando letras...";
-    case UIStringId::LyricsNotFound: return L"Letra não encontrada para esta música.";
+    case UIStringId::LyricsNotFound: return L"Letra não encontrada";
     case UIStringId::SettingsHeader: return L"Configurações";
     case UIStringId::ColorMode: return L"Escolher seu modo";
     case UIStringId::AccentColorLabel: return L"Cor em destaque";
@@ -1834,7 +1856,7 @@ wstring GetLocalizedText(UIStringId id) {
     case UIStringId::LyricsHeader: return L"Letras";
     case UIStringId::TranslateButton: return L"Traducir";
     case UIStringId::FetchingLyrics: return L"Buscando letras...";
-    case UIStringId::LyricsNotFound: return L"Letra no encontrada para esta canción.";
+    case UIStringId::LyricsNotFound: return L"Letra no encontrada";
     case UIStringId::SettingsHeader: return L"Configuración";
     case UIStringId::ColorMode: return L"Elegir tu modo";
     case UIStringId::AccentColorLabel: return L"Color de énfasis";
@@ -1860,7 +1882,7 @@ wstring GetLocalizedText(UIStringId id) {
     case UIStringId::LyricsHeader: return L"Paroles";
     case UIStringId::TranslateButton: return L"Traduire";
     case UIStringId::FetchingLyrics: return L"Recherche des paroles...";
-    case UIStringId::LyricsNotFound: return L"Paroles non trouvées pour cette chanson.";
+    case UIStringId::LyricsNotFound: return L"Paroles non trouvées";
     case UIStringId::SettingsHeader: return L"Paramètres";
     case UIStringId::ColorMode: return L"Choisir votre mode";
     case UIStringId::AccentColorLabel: return L"Couleur d'accentuation";
@@ -1886,7 +1908,7 @@ wstring GetLocalizedText(UIStringId id) {
     case UIStringId::LyricsHeader: return L"Songtext";
     case UIStringId::TranslateButton: return L"Übersetzen";
     case UIStringId::FetchingLyrics: return L"Songtext wird geladen...";
-    case UIStringId::LyricsNotFound: return L"Kein Songtext für diesen Titel gefunden.";
+    case UIStringId::LyricsNotFound: return L"Songtext nicht gefunden";
     case UIStringId::SettingsHeader: return L"Einstellungen";
     case UIStringId::ColorMode: return L"Modus auswählen";
     case UIStringId::AccentColorLabel: return L"Akzentfarbe";
@@ -1912,7 +1934,7 @@ wstring GetLocalizedText(UIStringId id) {
     case UIStringId::LyricsHeader: return L"Testo";
     case UIStringId::TranslateButton: return L"Traduci";
     case UIStringId::FetchingLyrics: return L"Ricerca del testo...";
-    case UIStringId::LyricsNotFound: return L"Testo non trovato per questo brano.";
+    case UIStringId::LyricsNotFound: return L"Testo non trovato";
     case UIStringId::SettingsHeader: return L"Impostazioni";
     case UIStringId::ColorMode: return L"Scegli la modalità";
     case UIStringId::AccentColorLabel: return L"Colore accento";
@@ -1940,7 +1962,7 @@ wstring GetLocalizedText(UIStringId id) {
   case UIStringId::LyricsHeader: return L"Lyrics";
   case UIStringId::TranslateButton: return L"Translate";
   case UIStringId::FetchingLyrics: return L"Fetching lyrics...";
-  case UIStringId::LyricsNotFound: return L"Lyrics not found for this track.";
+  case UIStringId::LyricsNotFound: return L"Lyrics not found";
   case UIStringId::SettingsHeader: return L"Settings";
   case UIStringId::ColorMode: return L"Choose your mode";
   case UIStringId::AccentColorLabel: return L"Accent color";
@@ -1962,6 +1984,61 @@ wstring GetLocalizedText(UIStringId id) {
   case UIStringId::LangIT: return L"Italiano";
   }
   return L"";
+}
+
+bool IsFontInstalled(const WCHAR* familyName) {
+  FontFamily family(familyName);
+  WCHAR name[LF_FACESIZE] = {0};
+  family.GetFamilyName(name);
+  return _wcsicmp(name, familyName) == 0;
+}
+
+bool IsWindowsSystemLightMode();
+
+int GetWidgetsOffset(HWND hTaskbar) {
+  DWORD taskbarAl = 1; // Padrão: Centralizado no Win11
+  DWORD taskbarDa = 1; // Padrão: Mostrar Widgets no Win11
+  DWORD size = sizeof(DWORD);
+
+  RegGetValueW(
+      HKEY_CURRENT_USER,
+      L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      L"TaskbarAl", RRF_RT_DWORD, nullptr, &taskbarAl,
+      &size);
+
+  size = sizeof(DWORD);
+  RegGetValueW(
+      HKEY_CURRENT_USER,
+      L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      L"TaskbarDa", RRF_RT_DWORD, nullptr, &taskbarDa,
+      &size);
+
+  int offset = 0;
+  if (taskbarAl == 1 && taskbarDa == 1) {
+    UINT dpi = 96;
+    typedef UINT(WINAPI* LPFN_GETDPIFORWINDOW)(HWND);
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    if (hUser32) {
+      LPFN_GETDPIFORWINDOW pGetDpiForWindow = (LPFN_GETDPIFORWINDOW)GetProcAddress(hUser32, "GetDpiForWindow");
+      if (pGetDpiForWindow) {
+        dpi = pGetDpiForWindow(hTaskbar);
+      }
+    }
+    float dpiScale = (float)dpi / 96.0f;
+    offset = (int)(156.0f * dpiScale);
+  }
+
+  static DWORD lastAl = 999;
+  static DWORD lastDa = 999;
+  static int lastOffset = -999;
+  if (taskbarAl != lastAl || taskbarDa != lastDa || offset != lastOffset) {
+    Log(L"GetWidgetsOffset: taskbarAl=%d, taskbarDa=%d, returnOffset=%d", taskbarAl, taskbarDa, offset);
+    lastAl = taskbarAl;
+    lastDa = taskbarDa;
+    lastOffset = offset;
+  }
+
+  return offset;
 }
 
 bool IsWindowsSystemLightMode() {
@@ -2234,27 +2311,27 @@ void DrawMediaPanel(Graphics &graphics, int width, int height) {
     graphics.FillPath(&placeBrush, &path);
   }
 
-  double scale = g_Settings.buttonScale;
-  int startControlX = artX + artSize + (int)(20 * scale);
+  float scale = (float)g_Settings.buttonScale;
+  int startControlX = artX + artSize + (int)(20.0f * scale);
   int controlY = height / 2;
 
-  SolidBrush activeBg{Color(IsWindowsSystemLightMode() ? 15 : 40, mainColor.GetRed(),
+  SolidBrush activeBg{Color(IsWindowsSystemLightMode() ? 12 : 20, mainColor.GetRed(),
                             mainColor.GetGreen(), mainColor.GetBlue())};
 
-  float gap = 32.0f * (float)scale;
+  float gap = 34.0f * scale;
 
-  float hoverW = 28.0f * (float)scale;
-  float hoverH = 38.0f * (float)scale;
-  float hoverR = 4.0f * (float)scale;
+  float hoverW = 32.0f * scale;
+  float hoverH = (float)height - 8.0f; // Altura responsiva (ocupa quase toda a taskbar com 4px padding nas pontas)
+  float hoverR = 4.5f * scale; // Cantos arredondados estilo Windows 11
+  float hoverY = 4.0f; // Centralizado verticalmente (4px padding no topo e no bottom)
 
   SolidBrush iconBrush(mainColor);
 
-  FontFamily testFamily(L"Segoe Fluent Icons", nullptr);
-  const WCHAR *iconFontName = (testFamily.GetLastStatus() == Ok)
+  const WCHAR *iconFontName = IsFontInstalled(L"Segoe Fluent Icons")
                                   ? L"Segoe Fluent Icons"
                                   : L"Segoe MDL2 Assets";
   FontFamily iconFontFamily(iconFontName, nullptr);
-  Font ctrlIconFont(&iconFontFamily, 14.0f * scale, FontStyleRegular, UnitPixel);
+  Font ctrlIconFont(&iconFontFamily, 12.0f * scale, FontStyleBold, UnitPixel);
   StringFormat centerFmt;
   centerFmt.SetAlignment(StringAlignmentCenter);
   centerFmt.SetLineAlignment(StringAlignmentCenter);
@@ -2264,11 +2341,11 @@ void DrawMediaPanel(Graphics &graphics, int width, int height) {
   if (g_HoverState == 1) {
     GraphicsPath hoverPath;
     AddRoundedRect(hoverPath, (int)(pX - hoverW / 2),
-                   (int)(controlY - hoverH / 2), (int)hoverW, (int)hoverH,
+                   (int)hoverY, (int)hoverW, (int)hoverH,
                    (int)hoverR);
     graphics.FillPath(&activeBg, &hoverPath);
   }
-  RectF prevRect(pX - hoverW/2, controlY - hoverH/2, hoverW, hoverH);
+  RectF prevRect(pX - hoverW/2, hoverY, hoverW, hoverH);
   graphics.DrawString(L"\xE892", -1, &ctrlIconFont, prevRect, &centerFmt, &iconBrush);
 
   // Play/Pause
@@ -2276,23 +2353,25 @@ void DrawMediaPanel(Graphics &graphics, int width, int height) {
   if (g_HoverState == 2) {
     GraphicsPath hoverPath;
     AddRoundedRect(hoverPath, (int)(plX - hoverW / 2),
-                   (int)(controlY - hoverH / 2), (int)hoverW, (int)hoverH,
+                   (int)hoverY, (int)hoverW, (int)hoverH,
                    (int)hoverR);
     graphics.FillPath(&activeBg, &hoverPath);
   }
-  RectF playRect(plX - hoverW/2, controlY - hoverH/2, hoverW, hoverH);
-  graphics.DrawString(state.isPlaying ? L"\xE769" : L"\xE768", -1, &ctrlIconFont, playRect, &centerFmt, &iconBrush);
+  RectF playRect(plX - hoverW/2, hoverY, hoverW, hoverH);
+
+  const WCHAR* playPauseGlyph = state.isPlaying ? L"\xE769" : L"\xE768";
+  graphics.DrawString(playPauseGlyph, -1, &ctrlIconFont, playRect, &centerFmt, &iconBrush);
 
   // Next
   float nX = plX + gap;
   if (g_HoverState == 3) {
     GraphicsPath hoverPath;
     AddRoundedRect(hoverPath, (int)(nX - hoverW / 2),
-                   (int)(controlY - hoverH / 2), (int)hoverW, (int)hoverH,
+                   (int)hoverY, (int)hoverW, (int)hoverH,
                    (int)hoverR);
     graphics.FillPath(&activeBg, &hoverPath);
   }
-  RectF nextRect(nX - hoverW/2, controlY - hoverH/2, hoverW, hoverH);
+  RectF nextRect(nX - hoverW/2, hoverY, hoverW, hoverH);
   graphics.DrawString(L"\xE893", -1, &ctrlIconFont, nextRect, &centerFmt, &iconBrush);
 
   int textX = (int)(nX + (20 * scale));
@@ -2367,6 +2446,7 @@ void RegisterTaskbarHook(HWND hwnd) {
 // --- Window Procedure ---
 #define IDT_POLL_MEDIA 1001
 #define IDT_ANIMATION 1002
+#define IDT_LAYOUT_POLL 1003
 #define APP_WM_CLOSE WM_APP
 
 void RedrawLayeredWindow(HWND hwnd) {
@@ -2557,8 +2637,7 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
   centerFormat.SetAlignment(StringAlignmentCenter);
   centerFormat.SetLineAlignment(StringAlignmentCenter);
 
-  FontFamily testFamily(L"Segoe Fluent Icons", nullptr);
-  const WCHAR *iconFontName = (testFamily.GetLastStatus() == Ok)
+  const WCHAR *iconFontName = IsFontInstalled(L"Segoe Fluent Icons")
                                   ? L"Segoe Fluent Icons"
                                   : L"Segoe MDL2 Assets";
   FontFamily iconFontFamily(iconFontName, nullptr);
@@ -2593,6 +2672,9 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
     RectF headerTextRect(15.0f * scale, Y_top, w - 150.0f * scale,
                          headerHeight);
     wstring headerText = GetLocalizedText(UIStringId::LyricsHeader);
+    if (!g_HasLyrics && !g_IsFetchingLyrics) {
+      headerText = GetLocalizedText(UIStringId::LyricsNotFound);
+    }
     graphics.DrawString(headerText.c_str(), -1, &headerFont, headerTextRect,
                         &headerFormat, &headerBrush);
 
@@ -2600,16 +2682,18 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
     graphics.MeasureString(headerText.c_str(), -1, &headerFont, headerTextRect,
                            &headerFormat, &headerTextBound);
 
-    wstring sourceStr = L"via " + g_LyricsSource;
-    Font sourceFont(&fontFamily, 9.5f * scale, FontStyleRegular, UnitPixel);
-    SolidBrush sourceBrush(detailTextColor);
-    RectF sourceRect(
-        headerTextBound.X + headerTextBound.Width + 6.0f * scale, Y_top,
-        w - (headerTextBound.X + headerTextBound.Width + 6.0f * scale) -
-            100.0f * scale,
-        headerHeight);
-    graphics.DrawString(sourceStr.c_str(), -1, &sourceFont, sourceRect,
-                        &headerFormat, &sourceBrush);
+    if (g_HasLyrics) {
+      wstring sourceStr = L"via " + g_LyricsSource;
+      Font sourceFont(&fontFamily, 9.5f * scale, FontStyleRegular, UnitPixel);
+      SolidBrush sourceBrush(detailTextColor);
+      RectF sourceRect(
+          headerTextBound.X + headerTextBound.Width + 6.0f * scale, Y_top,
+          w - (headerTextBound.X + headerTextBound.Width + 6.0f * scale) -
+              100.0f * scale,
+          headerHeight);
+      graphics.DrawString(sourceStr.c_str(), -1, &sourceFont, sourceRect,
+                          &headerFormat, &sourceBrush);
+    }
 
     float headerBtnH = 26.0f * scale;
 
@@ -2653,12 +2737,18 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
     GraphicsPath transBtnPath;
     AddRoundedRectF(transBtnPath, transBtnX, transBtnY, transBtnW, headerBtnH,
                     4.0f * scale);
-    SolidBrush transBtnBgBrush(g_TranslateLyrics ? accentColor
-                                                 : Color(30, 128, 128, 128));
-    graphics.FillPath(&transBtnBgBrush, &transBtnPath);
-    SolidBrush transIconBrush(g_TranslateLyrics
-                                  ? GetAccentForegroundColor(accentColor)
-                                  : mainTextColor);
+    
+    bool transEnabled = g_HasLyrics || g_IsFetchingLyrics;
+    
+    if (transEnabled) {
+      SolidBrush transBtnBgBrush(g_TranslateLyrics ? accentColor
+                                                   : Color(30, 128, 128, 128));
+      graphics.FillPath(&transBtnBgBrush, &transBtnPath);
+    }
+    
+    SolidBrush transIconBrush(
+        !transEnabled ? Color(80, mainTextColor.GetRed(), mainTextColor.GetGreen(), mainTextColor.GetBlue())
+                      : (g_TranslateLyrics ? GetAccentForegroundColor(accentColor) : mainTextColor));
 
     RectF transIconRect(transBtnX + 8.0f * scale, transBtnY, 14.0f * scale,
                         headerBtnH);
@@ -2697,11 +2787,13 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
                           &lyricsFormat, &lyricsBrush);
       graphics.ResetClip();
     } else if (!g_HasLyrics) {
-      graphics.SetClip(lyricsRect);
-      wstring notFoundText = GetLocalizedText(UIStringId::LyricsNotFound);
-      graphics.DrawString(notFoundText.c_str(), -1, &lyricsFont, lyricsRect,
-                          &lyricsFormat, &lyricsBrush);
-      graphics.ResetClip();
+      if (g_FlyoutCurrentHeight > 220.0f) {
+        graphics.SetClip(lyricsRect);
+        wstring notFoundText = GetLocalizedText(UIStringId::LyricsNotFound);
+        graphics.DrawString(notFoundText.c_str(), -1, &lyricsFont, lyricsRect,
+                            &lyricsFormat, &lyricsBrush);
+        graphics.ResetClip();
+      }
     } else {
       graphics.SetClip(lyricsRect);
       if (!g_SyncedLyrics.empty()) {
@@ -3192,390 +3284,17 @@ void DrawFlyoutPanel(Graphics &graphics, int w, int h) {
     }
   }
 
-  if (g_SettingsCardOpen) {
-    SolidBrush overlayBrush(Color(150, 0, 0, 0));
-    graphics.FillRectangle(&overlayBrush, 0.0f, 0.0f, (REAL)w, (REAL)hMax);
 
-    float cardW = 310.0f * scale;
-    float cardH = 372.0f * scale;
-    float cardX = (w - cardW) / 2.0f;
-    float cardY = (hMax - cardH) / 2.0f;
+}
 
-    GraphicsPath cardPath;
-    AddRoundedRectF(cardPath, cardX, cardY, cardW, cardH, 8.0f * scale);
-    SolidBrush cardBgBrush(IsSystemLightMode() ? Color(255, 245, 245, 245)
-                                              : Color(255, 32, 32, 32));
-    graphics.FillPath(&cardBgBrush, &cardPath);
-    Pen cardBorderPen(borderColor, 1.0f);
-    graphics.DrawPath(&cardBorderPen, &cardPath);
-
-    Font titleFont(&fontFamily, 13.0f * scale, FontStyleBold, UnitPixel);
-    SolidBrush titleBrush(mainTextColor);
-    RectF titleRect(cardX, cardY + 12.0f * scale, cardW, 20.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::SettingsHeader).c_str(), -1, &titleFont, titleRect,
-                        &centerFormat, &titleBrush);
-
-    Font labelFont(&fontFamily, 10.0f * scale, FontStyleBold, UnitPixel);
-    SolidBrush labelBrush(mainTextColor);
-    StringFormat leftFmt;
-    leftFmt.SetAlignment(StringAlignmentNear);
-    leftFmt.SetLineAlignment(StringAlignmentCenter);
-
-    SolidBrush subCardBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255)
-                                                 : Color(255, 38, 38, 38));
-    Pen subCardBorderPen(IsSystemLightMode() ? Color(30, 0, 0, 0)
-                                             : Color(25, 255, 255, 255), 1.0f);
-    Pen dividerPen(IsSystemLightMode() ? Color(15, 0, 0, 0)
-                                       : Color(15, 255, 255, 255), 1.0f);
-
-    float subCardX = cardX + 10.0f * scale;
-    float subCardW = cardW - 20.0f * scale;
-    float comboW = 100.0f * scale;
-    float comboH = 24.0f * scale;
-    Font comboFont(&fontFamily, 9.5f * scale, FontStyleRegular, UnitPixel);
-    Font iconFontSmall(&iconFontFamily, 7.5f * scale, FontStyleRegular, UnitPixel);
-
-    // --- CARD 1: APARÊNCIA ---
-    float card1X = subCardX;
-    float card1Y = cardY + 36.0f * scale;
-    float card1W = subCardW;
-    float card1H = 242.0f * scale;
-
-    GraphicsPath card1Path;
-    AddRoundedRectF(card1Path, card1X, card1Y, card1W, card1H, 6.0f * scale);
-    graphics.FillPath(&subCardBgBrush, &card1Path);
-    graphics.DrawPath(&subCardBorderPen, &card1Path);
-
-    // Row 1: Modo de cor
-    float row1Y = card1Y + 6.0f * scale;
-    RectF label1Rect(card1X + 12.0f * scale, row1Y, card1W - comboW - 20.0f * scale, 36.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::ColorMode).c_str(), -1, &labelFont, label1Rect, &leftFmt, &labelBrush);
-
-    float combo1X = card1X + card1W - comboW - 12.0f * scale;
-    float combo1Y = card1Y + 12.0f * scale;
-    GraphicsPath combo1Path;
-    AddRoundedRectF(combo1Path, combo1X, combo1Y, comboW, comboH, 4.0f * scale);
-    Color combo1Bg = g_HoverThemeCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
-                                       : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
-    SolidBrush combo1BgBrush(combo1Bg);
-    graphics.FillPath(&combo1BgBrush, &combo1Path);
-    graphics.DrawPath(&subCardBorderPen, &combo1Path);
-
-    wstring themeName = GetLocalizedText(UIStringId::ThemeAuto);
-    if (g_Settings.theme == 1) themeName = GetLocalizedText(UIStringId::ThemeLight);
-    else if (g_Settings.theme == 2) themeName = GetLocalizedText(UIStringId::ThemeDark);
-
-    RectF text1Rect(combo1X + 8.0f * scale, combo1Y, comboW - 24.0f * scale, comboH);
-    graphics.DrawString(themeName.c_str(), -1, &comboFont, text1Rect, &leftFmt, &labelBrush);
-
-    RectF arrow1Rect(combo1X + comboW - 20.0f * scale, combo1Y, 14.0f * scale, comboH);
-    graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow1Rect, &centerFormat, &labelBrush);
-
-    // Divider 1
-    float div1Y = card1Y + 42.0f * scale;
-    graphics.DrawLine(&dividerPen, card1X + 12.0f * scale, div1Y, card1X + card1W - 12.0f * scale, div1Y);
-
-    // Row 2: Cor em destaque
-    float row2Y = card1Y + 43.0f * scale;
-    RectF label2Rect(card1X + 12.0f * scale, row2Y, card1W - comboW - 20.0f * scale, 36.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::AccentColorLabel).c_str(), -1, &labelFont, label2Rect, &leftFmt, &labelBrush);
-
-    float combo2X = combo1X;
-    float combo2Y = card1Y + 49.0f * scale;
-    GraphicsPath combo2Path;
-    AddRoundedRectF(combo2Path, combo2X, combo2Y, comboW, comboH, 4.0f * scale);
-    Color combo2Bg = g_HoverAccentCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
-                                       : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
-    SolidBrush combo2BgBrush(combo2Bg);
-    graphics.FillPath(&combo2BgBrush, &combo2Path);
-    graphics.DrawPath(&subCardBorderPen, &combo2Path);
-
-    wstring accentModeName = g_Settings.customAccent ? GetLocalizedText(UIStringId::AccentManual) : GetLocalizedText(UIStringId::AccentAuto);
-    RectF text2Rect(combo2X + 8.0f * scale, combo2Y, comboW - 24.0f * scale, comboH);
-    graphics.DrawString(accentModeName.c_str(), -1, &comboFont, text2Rect, &leftFmt, &labelBrush);
-
-    RectF arrow2Rect(combo2X + comboW - 20.0f * scale, combo2Y, 14.0f * scale, comboH);
-    graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow2Rect, &centerFormat, &labelBrush);
-
-    // Label: Cores do Windows
-    float label3Y = card1Y + 86.0f * scale;
-    RectF label3Rect(card1X + 12.0f * scale, label3Y, card1W - 24.0f * scale, 16.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::WindowsColorsLabel).c_str(), -1, &labelFont, label3Rect, &leftFmt, &labelBrush);
-
-    // Grade de cores
-    float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale; // 256.0f * scale
-    float rowX = card1X + (card1W - gridWidth) / 2.0f;
-    float rowY = card1Y + 106.0f * scale;
-
-    float squareSize = 22.0f * scale;
-    float spacing = 4.0f * scale;
-
-    for (int i = 0; i < 50; i++) {
-      int row = i / 10;
-      int col = i % 10;
-      float sx = rowX + col * (squareSize + spacing);
-      float sy = rowY + row * (squareSize + spacing);
-
-      Color squareColor(WINDOWS_ACCENT_COLORS[i]);
-      SolidBrush squareBrush(squareColor);
-
-      GraphicsPath squarePath;
-      AddRoundedRectF(squarePath, sx, sy, squareSize, squareSize, 3.0f * scale);
-      graphics.FillPath(&squareBrush, &squarePath);
-
-      bool isSelected = g_Settings.customAccent && g_Settings.accentColor == WINDOWS_ACCENT_COLORS[i];
-      bool isHovered = (i == g_HoveredGridIndex);
-
-      if (isSelected) {
-        Pen borderPen(mainTextColor, 2.0f * scale);
-        graphics.DrawPath(&borderPen, &squarePath);
-
-        Font iconFont2(&iconFontFamily, 11.0f * scale, FontStyleRegular, UnitPixel);
-        SolidBrush checkBrush(GetAccentForegroundColor(squareColor));
-        graphics.DrawString(L"\xE73E", -1, &iconFont2, RectF(sx, sy, squareSize, squareSize), &centerFormat, &checkBrush);
-      } else if (isHovered) {
-        Pen hoverPen(Color(180, mainTextColor.GetRed(), mainTextColor.GetGreen(), mainTextColor.GetBlue()), 1.5f * scale);
-        graphics.DrawPath(&hoverPen, &squarePath);
-      } else {
-        Pen borderPen(Color(30, 128, 128, 128), 1.0f);
-        graphics.DrawPath(&borderPen, &squarePath);
-      }
-    }
-
-
-    // --- CARD 2: IDIOMA ---
-    float card2X = subCardX;
-    float card2Y = cardY + 284.0f * scale;
-    float card2W = subCardW;
-    float card2H = 80.0f * scale;
-
-    GraphicsPath card2Path;
-    AddRoundedRectF(card2Path, card2X, card2Y, card2W, card2H, 6.0f * scale);
-    graphics.FillPath(&subCardBgBrush, &card2Path);
-    graphics.DrawPath(&subCardBorderPen, &card2Path);
-
-    // Row 1: Idioma da interface
-    float row3Y = card2Y + 4.0f * scale;
-    RectF label4Rect(card2X + 12.0f * scale, row3Y, card2W - comboW - 20.0f * scale, 36.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::InterfaceLanguageLabel).c_str(), -1, &labelFont, label4Rect, &leftFmt, &labelBrush);
-
-    float combo3X = card2X + card2W - comboW - 12.0f * scale;
-    float combo3Y = card2Y + 10.0f * scale;
-    GraphicsPath combo3Path;
-    AddRoundedRectF(combo3Path, combo3X, combo3Y, comboW, comboH, 4.0f * scale);
-    Color combo3Bg = g_HoverUILangCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
-                                       : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
-    SolidBrush combo3BgBrush(combo3Bg);
-    graphics.FillPath(&combo3BgBrush, &combo3Path);
-    graphics.DrawPath(&subCardBorderPen, &combo3Path);
-
-    wstring uiLangName = GetLocalizedText(UIStringId::LangAuto);
-    if (g_Settings.uiLanguage == 1) uiLangName = GetLocalizedText(UIStringId::LangPT);
-    else if (g_Settings.uiLanguage == 2) uiLangName = GetLocalizedText(UIStringId::LangEN);
-    else if (g_Settings.uiLanguage == 3) uiLangName = GetLocalizedText(UIStringId::LangES);
-    else if (g_Settings.uiLanguage == 4) uiLangName = GetLocalizedText(UIStringId::LangFR);
-    else if (g_Settings.uiLanguage == 5) uiLangName = GetLocalizedText(UIStringId::LangDE);
-    else if (g_Settings.uiLanguage == 6) uiLangName = GetLocalizedText(UIStringId::LangIT);
-
-    RectF text3Rect(combo3X + 8.0f * scale, combo3Y, comboW - 24.0f * scale, comboH);
-    graphics.DrawString(uiLangName.c_str(), -1, &comboFont, text3Rect, &leftFmt, &labelBrush);
-
-    RectF arrow3Rect(combo3X + comboW - 20.0f * scale, combo3Y, 14.0f * scale, comboH);
-    graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow3Rect, &centerFormat, &labelBrush);
-
-    // Divider 2
-    float div2Y = card2Y + 40.0f * scale;
-    graphics.DrawLine(&dividerPen, card2X + 12.0f * scale, div2Y, card2X + card2W - 12.0f * scale, div2Y);
-
-    // Row 2: Traduzir letras para
-    float row4Y = card2Y + 40.0f * scale;
-    RectF label5Rect(card2X + 12.0f * scale, row4Y, card2W - comboW - 20.0f * scale, 36.0f * scale);
-    graphics.DrawString(GetLocalizedText(UIStringId::TranslateToLabel).c_str(), -1, &labelFont, label5Rect, &leftFmt, &labelBrush);
-
-    float combo4X = combo3X;
-    float combo4Y = card2Y + 46.0f * scale;
-    GraphicsPath combo4Path;
-    AddRoundedRectF(combo4Path, combo4X, combo4Y, comboW, comboH, 4.0f * scale);
-    Color combo4Bg = g_HoverTransLangCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
-                                          : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
-    SolidBrush combo4BgBrush(combo4Bg);
-    graphics.FillPath(&combo4BgBrush, &combo4Path);
-    graphics.DrawPath(&subCardBorderPen, &combo4Path);
-
-    wstring transLangName = GetLocalizedText(UIStringId::LangAuto);
-    if (g_Settings.translationLanguage == 1) transLangName = GetLocalizedText(UIStringId::LangPT);
-    else if (g_Settings.translationLanguage == 2) transLangName = GetLocalizedText(UIStringId::LangEN);
-    else if (g_Settings.translationLanguage == 3) transLangName = GetLocalizedText(UIStringId::LangES);
-    else if (g_Settings.translationLanguage == 4) transLangName = GetLocalizedText(UIStringId::LangFR);
-    else if (g_Settings.translationLanguage == 5) transLangName = GetLocalizedText(UIStringId::LangDE);
-    else if (g_Settings.translationLanguage == 6) transLangName = GetLocalizedText(UIStringId::LangIT);
-
-    RectF text4Rect(combo4X + 8.0f * scale, combo4Y, comboW - 24.0f * scale, comboH);
-    graphics.DrawString(transLangName.c_str(), -1, &comboFont, text4Rect, &leftFmt, &labelBrush);
-
-    RectF arrow4Rect(combo4X + comboW - 20.0f * scale, combo4Y, 14.0f * scale, comboH);
-    graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow4Rect, &centerFormat, &labelBrush);
-
-
-    // --- Dropdowns Flutuantes (Desenhar por Último) ---
-    wstring themeItems[3] = {
-      GetLocalizedText(UIStringId::ThemeAuto),
-      GetLocalizedText(UIStringId::ThemeLight),
-      GetLocalizedText(UIStringId::ThemeDark)
-    };
-
-    wstring accentItems[2] = {
-      GetLocalizedText(UIStringId::AccentAuto),
-      GetLocalizedText(UIStringId::AccentManual)
-    };
-
-    wstring langItems[7] = {
-      GetLocalizedText(UIStringId::LangAuto),
-      GetLocalizedText(UIStringId::LangPT),
-      GetLocalizedText(UIStringId::LangEN),
-      GetLocalizedText(UIStringId::LangES),
-      GetLocalizedText(UIStringId::LangFR),
-      GetLocalizedText(UIStringId::LangDE),
-      GetLocalizedText(UIStringId::LangIT)
-    };
-
-    // 1. Dropdown do Modo de Cor
-    if (g_ThemeDropdownOpen) {
-      float dropX = combo1X;
-      float dropY = combo1Y + comboH + 2.0f * scale;
-      float dropW = comboW;
-      float dropH = 3 * 28.0f * scale;
-
-      GraphicsPath dropPath;
-      AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
-      SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
-      graphics.FillPath(&dropBgBrush, &dropPath);
-      Pen dropBorderPen(borderColor, 1.0f);
-      graphics.DrawPath(&dropBorderPen, &dropPath);
-
-      for (int i = 0; i < 3; i++) {
-        float itemY = dropY + i * 28.0f * scale;
-
-        if (g_HoveredDropdownItem == i) {
-          GraphicsPath itemPath;
-          AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
-          SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
-          graphics.FillPath(&itemHoverBg, &itemPath);
-        }
-
-        if (g_Settings.theme == i) {
-          SolidBrush barBrush(GetWindowsAccentColor());
-          graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
-        }
-
-        RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
-        graphics.DrawString(themeItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
-      }
-    }
-
-    // 2. Dropdown da Cor em Destaque
-    if (g_AccentDropdownOpen) {
-      float dropX = combo2X;
-      float dropY = combo2Y + comboH + 2.0f * scale;
-      float dropW = comboW;
-      float dropH = 2 * 28.0f * scale;
-
-      GraphicsPath dropPath;
-      AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
-      SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
-      graphics.FillPath(&dropBgBrush, &dropPath);
-      Pen dropBorderPen(borderColor, 1.0f);
-      graphics.DrawPath(&dropBorderPen, &dropPath);
-
-      for (int i = 0; i < 2; i++) {
-        float itemY = dropY + i * 28.0f * scale;
-
-        if (g_HoveredDropdownItem == i) {
-          GraphicsPath itemPath;
-          AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
-          SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
-          graphics.FillPath(&itemHoverBg, &itemPath);
-        }
-
-        bool isItemSelected = (i == 0 && !g_Settings.customAccent) || (i == 1 && g_Settings.customAccent);
-        if (isItemSelected) {
-          SolidBrush barBrush(GetWindowsAccentColor());
-          graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
-        }
-
-        RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
-        graphics.DrawString(accentItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
-      }
-    }
-
-    // 3. Dropdown do Idioma da Interface
-    if (g_UILangDropdownOpen) {
-      float dropX = combo3X;
-      float dropY = combo3Y + comboH + 2.0f * scale;
-      float dropW = comboW;
-      float dropH = 7 * 28.0f * scale;
-
-      GraphicsPath dropPath;
-      AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
-      SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
-      graphics.FillPath(&dropBgBrush, &dropPath);
-      Pen dropBorderPen(borderColor, 1.0f);
-      graphics.DrawPath(&dropBorderPen, &dropPath);
-
-      for (int i = 0; i < 7; i++) {
-        float itemY = dropY + i * 28.0f * scale;
-
-        if (g_HoveredDropdownItem == i) {
-          GraphicsPath itemPath;
-          AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
-          SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
-          graphics.FillPath(&itemHoverBg, &itemPath);
-        }
-
-        if (g_Settings.uiLanguage == i) {
-          SolidBrush barBrush(GetWindowsAccentColor());
-          graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
-        }
-
-        RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
-        graphics.DrawString(langItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
-      }
-    }
-
-    // 4. Dropdown do Idioma da Tradução (Abre para CIMA)
-    if (g_TransLangDropdownOpen) {
-      float dropX = combo4X;
-      float dropW = comboW;
-      float dropH = 7 * 28.0f * scale;
-      float dropY = combo4Y - dropH - 2.0f * scale; // UP
-
-      GraphicsPath dropPath;
-      AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
-      SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
-      graphics.FillPath(&dropBgBrush, &dropPath);
-      Pen dropBorderPen(borderColor, 1.0f);
-      graphics.DrawPath(&dropBorderPen, &dropPath);
-
-      for (int i = 0; i < 7; i++) {
-        float itemY = dropY + i * 28.0f * scale;
-
-        if (g_HoveredDropdownItem == i) {
-          GraphicsPath itemPath;
-          AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
-          SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
-          graphics.FillPath(&itemHoverBg, &itemPath);
-        }
-
-        if (g_Settings.translationLanguage == i) {
-          SolidBrush barBrush(GetWindowsAccentColor());
-          graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
-        }
-
-        RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
-        graphics.DrawString(langItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
-      }
-    }
+float GetFlyoutTargetHeight() {
+  if (g_IsFetchingLyrics) {
+    return 400.0f;
   }
+  if (g_HasLyrics) {
+    return 400.0f;
+  }
+  return 195.0f;
 }
 
 void UpdateFlyoutWindow() {
@@ -3584,7 +3303,7 @@ void UpdateFlyoutWindow() {
 
   double scale = g_Settings.buttonScale;
   int w = (int)(360 * scale);
-  int hMax = (int)(g_FlyoutExpandedHeight * scale);
+  int hMax = (int)(g_FlyoutCurrentHeight * scale);
 
   if (w <= 0 || hMax <= 0)
     return;
@@ -3592,7 +3311,21 @@ void UpdateFlyoutWindow() {
   int yOffsetAnimation =
       (int)((1.0f - g_FlyoutOpenProgress) * g_FlyoutStartOffset);
 
-  int finalY = g_FlyoutTargetY + yOffsetAnimation;
+  HWND hTaskbar = FindWindow(L"Shell_TrayWnd", nullptr);
+  RECT rcTaskbar{0};
+  if (hTaskbar) {
+    GetWindowRect(hTaskbar, &rcTaskbar);
+  } else {
+    rcTaskbar.top = GetSystemMetrics(SM_CYSCREEN) - 48;
+    rcTaskbar.bottom = GetSystemMetrics(SM_CYSCREEN);
+  }
+
+  int finalY;
+  if (rcTaskbar.top < 100) {
+    finalY = rcTaskbar.bottom + 8 + yOffsetAnimation;
+  } else {
+    finalY = rcTaskbar.top - hMax - 8 + yOffsetAnimation;
+  }
 
   bool sizeOrPosChanged =
       (g_FlyoutTargetX != g_LastFlyoutX || finalY != g_LastFlyoutY ||
@@ -3680,6 +3413,953 @@ void UpdateFlyoutWindow() {
   ReleaseDC(NULL, hdcScreen);
 }
 
+void UpdateSettingsWindow() {
+  if (!g_hSettingsWindow || !g_hSettingsChildWindow)
+    return;
+
+  double scale = g_Settings.buttonScale;
+  int w = (int)(360 * scale);
+  int h = (int)(380 * scale);
+
+  if (w <= 0 || h <= 0)
+    return;
+
+  // Alinhar com as coordenadas do flyout
+  RECT rcFlyout{0};
+  GetWindowRect(g_hFlyoutWindow, &rcFlyout);
+  int flyoutX = rcFlyout.left;
+  int flyoutY = rcFlyout.top;
+  int flyoutH = rcFlyout.bottom - rcFlyout.top;
+
+  // Posição da barra de tarefas
+  HWND hTaskbar = FindWindow(L"Shell_TrayWnd", nullptr);
+  RECT rcTaskbar{0};
+  if (hTaskbar) {
+    GetWindowRect(hTaskbar, &rcTaskbar);
+  } else {
+    rcTaskbar.top = GetSystemMetrics(SM_CYSCREEN) - 48;
+  }
+
+  int yOffsetSettingsAnim = (int)((1.0f - g_SettingsOpenProgress) * 15.0f);
+  int finalY;
+
+  if (rcTaskbar.top < 100) { // Barra de tarefas no topo -> configurações ficam ABAIXO do flyout
+    finalY = flyoutY + flyoutH + 8 - yOffsetSettingsAnim;
+  } else { // Barra de tarefas no bottom -> configurações ficam ACIMA do flyout
+    finalY = flyoutY - h - 8 + yOffsetSettingsAnim;
+  }
+
+  UINT parentFlags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
+  if (IsTransparencyEnabled()) {
+    parentFlags |= SWP_NOREDRAW;
+  }
+
+  SetWindowPos(g_hSettingsWindow, NULL, flyoutX, finalY, w, h, parentFlags);
+  SetWindowPos(g_hSettingsChildWindow, NULL, flyoutX, finalY, w, h,
+               SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOREDRAW);
+
+  HRGN hRgn = CreateRectRgn(0, 0, w, h);
+  SetWindowRgn(g_hSettingsWindow, hRgn, TRUE);
+
+  HDC hdcScreen = GetDC(NULL);
+  HDC memDC = CreateCompatibleDC(hdcScreen);
+
+  BITMAPINFO bmi = {0};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = w;
+  bmi.bmiHeader.biHeight = -h;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+
+  void *pvBits = nullptr;
+  HBITMAP memBitmap = CreateDIBSection(memDC, &bmi, DIB_RGB_COLORS, &pvBits, NULL, 0);
+  HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+
+  Bitmap bmp(w, h, PixelFormat32bppPARGB);
+  {
+    Graphics gTemp(&bmp);
+    gTemp.SetSmoothingMode(SmoothingModeAntiAlias);
+    gTemp.SetTextRenderingHint(TextRenderingHintAntiAlias);
+    gTemp.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    gTemp.SetPixelOffsetMode(PixelOffsetModeHighQuality);
+
+    DrawSettingsPanel(gTemp, w, h);
+  }
+
+  BitmapData bmpData;
+  Rect rect(0, 0, w, h);
+  if (bmp.LockBits(&rect, ImageLockModeRead, PixelFormat32bppPARGB, &bmpData) == Ok) {
+    BYTE *pSrc = (BYTE *)bmpData.Scan0;
+    BYTE *pDst = (BYTE *)pvBits;
+    int rowSize = w * 4;
+    for (int y = 0; y < h; y++) {
+      memcpy(pDst + y * rowSize, pSrc + y * bmpData.Stride, rowSize);
+    }
+    bmp.UnlockBits(&bmpData);
+  }
+
+  POINT ptSrc = {0, 0};
+  POINT ptDest = {flyoutX, finalY};
+  SIZE sizeDest = {w, h};
+  BLENDFUNCTION blend = {0};
+  blend.BlendOp = AC_SRC_OVER;
+  blend.BlendFlags = 0;
+  blend.SourceConstantAlpha = (BYTE)g_SettingsAlpha;
+  blend.AlphaFormat = AC_SRC_ALPHA;
+
+  UpdateLayeredWindow(g_hSettingsChildWindow, hdcScreen, &ptDest, &sizeDest,
+                      memDC, &ptSrc, 0, &blend, ULW_ALPHA);
+
+  SelectObject(memDC, oldBitmap);
+  DeleteObject(memBitmap);
+  DeleteDC(memDC);
+  ReleaseDC(NULL, hdcScreen);
+}
+
+void DrawSettingsPanel(Graphics &graphics, int w, int h) {
+  graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+  graphics.SetTextRenderingHint(TextRenderingHintAntiAlias);
+  graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+  graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
+
+  float scale = (float)w / 360.0f;
+  float radius = 8.0f * scale;
+
+  Color bgColor;
+  Color borderColor;
+  if (IsTransparencyEnabled()) {
+    bgColor = Color(0, 0, 0, 0);
+    if (IsSystemLightMode()) {
+      borderColor = Color(30, 0, 0, 0);
+    } else {
+      borderColor = Color(40, 255, 255, 255);
+    }
+  } else {
+    if (IsSystemLightMode()) {
+      bgColor = Color(255, 243, 243, 243);
+      borderColor = Color(30, 0, 0, 0);
+    } else {
+      bgColor = Color(255, 32, 32, 32);
+      borderColor = Color(30, 255, 255, 255);
+    }
+  }
+
+  graphics.Clear(Color(0, 0, 0, 0));
+
+  GraphicsPath settingsPath;
+  AddRoundedRectF(settingsPath, 0.5f, 0.5f, (REAL)w - 1.0f, (REAL)h - 1.0f, radius);
+
+  SolidBrush bgBrush(bgColor);
+  graphics.FillPath(&bgBrush, &settingsPath);
+
+  Pen borderPen(borderColor, 1.0f);
+  graphics.DrawPath(&borderPen, &settingsPath);
+
+  float cardW = 340.0f * scale;
+  float cardH = 360.0f * scale;
+  float cardX = (w - cardW) / 2.0f;
+  float cardY = 10.0f * scale;
+
+  FontFamily fontFamily(FONT_NAME, nullptr);
+  const WCHAR *iconFontName = IsFontInstalled(L"Segoe Fluent Icons")
+                                  ? L"Segoe Fluent Icons"
+                                  : L"Segoe MDL2 Assets";
+  FontFamily iconFontFamily(iconFontName, nullptr);
+  Font iconFontSmall(&iconFontFamily, 7.5f * scale, FontStyleRegular, UnitPixel);
+
+  Font titleFont(&fontFamily, 13.0f * scale, FontStyleBold, UnitPixel);
+  SolidBrush titleBrush(GetCurrentTextColor());
+  RectF titleRect(cardX, cardY + 2.0f * scale, cardW, 20.0f * scale);
+  
+  StringFormat centerFormat;
+  centerFormat.SetAlignment(StringAlignmentCenter);
+  centerFormat.SetLineAlignment(StringAlignmentCenter);
+  graphics.DrawString(GetLocalizedText(UIStringId::SettingsHeader).c_str(), -1, &titleFont, titleRect,
+                      &centerFormat, &titleBrush);
+
+  Font labelFont(&fontFamily, 10.0f * scale, FontStyleBold, UnitPixel);
+  SolidBrush labelBrush(GetCurrentTextColor());
+  StringFormat leftFmt;
+  leftFmt.SetAlignment(StringAlignmentNear);
+  leftFmt.SetLineAlignment(StringAlignmentCenter);
+
+  SolidBrush subCardBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255)
+                                               : Color(255, 38, 38, 38));
+  Pen subCardBorderPen(IsSystemLightMode() ? Color(30, 0, 0, 0)
+                                           : Color(25, 255, 255, 255), 1.0f);
+  Pen dividerPen(IsSystemLightMode() ? Color(15, 0, 0, 0)
+                                     : Color(15, 255, 255, 255), 1.0f);
+
+  float subCardX = cardX + 10.0f * scale;
+  float subCardW = cardW - 20.0f * scale;
+  float comboW = 100.0f * scale;
+  float comboH = 24.0f * scale;
+  Font comboFont(&fontFamily, 9.5f * scale, FontStyleRegular, UnitPixel);
+
+  // --- CARD 1: APARÊNCIA ---
+  float card1X = subCardX;
+  float card1Y = cardY + 30.0f * scale;
+  float card1W = subCardW;
+  float card1H = 242.0f * scale;
+
+  GraphicsPath card1Path;
+  AddRoundedRectF(card1Path, card1X, card1Y, card1W, card1H, 6.0f * scale);
+  graphics.FillPath(&subCardBgBrush, &card1Path);
+  graphics.DrawPath(&subCardBorderPen, &card1Path);
+
+  // Row 1: Modo de cor
+  float row1Y = card1Y + 6.0f * scale;
+  RectF label1Rect(card1X + 12.0f * scale, row1Y, card1W - comboW - 20.0f * scale, 36.0f * scale);
+  graphics.DrawString(GetLocalizedText(UIStringId::ColorMode).c_str(), -1, &labelFont, label1Rect, &leftFmt, &labelBrush);
+
+  float combo1X = card1X + card1W - comboW - 12.0f * scale;
+  float combo1Y = card1Y + 12.0f * scale;
+  GraphicsPath combo1Path;
+  AddRoundedRectF(combo1Path, combo1X, combo1Y, comboW, comboH, 4.0f * scale);
+  Color combo1Bg = g_HoverThemeCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
+                                     : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
+  SolidBrush combo1BgBrush(combo1Bg);
+  graphics.FillPath(&combo1BgBrush, &combo1Path);
+  graphics.DrawPath(&subCardBorderPen, &combo1Path);
+
+  wstring themeName = GetLocalizedText(UIStringId::ThemeAuto);
+  if (g_Settings.theme == 1) themeName = GetLocalizedText(UIStringId::ThemeLight);
+  else if (g_Settings.theme == 2) themeName = GetLocalizedText(UIStringId::ThemeDark);
+
+  RectF text1Rect(combo1X + 8.0f * scale, combo1Y, comboW - 24.0f * scale, comboH);
+  graphics.DrawString(themeName.c_str(), -1, &comboFont, text1Rect, &leftFmt, &labelBrush);
+
+  RectF arrow1Rect(combo1X + comboW - 20.0f * scale, combo1Y, 14.0f * scale, comboH);
+  graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow1Rect, &centerFormat, &labelBrush);
+
+  // Divider 1
+  float div1Y = card1Y + 42.0f * scale;
+  graphics.DrawLine(&dividerPen, card1X + 12.0f * scale, div1Y, card1X + card1W - 12.0f * scale, div1Y);
+
+  // Row 2: Cor em destaque
+  float row2Y = card1Y + 43.0f * scale;
+  RectF label2Rect(card1X + 12.0f * scale, row2Y, card1W - comboW - 20.0f * scale, 36.0f * scale);
+  graphics.DrawString(GetLocalizedText(UIStringId::AccentColorLabel).c_str(), -1, &labelFont, label2Rect, &leftFmt, &labelBrush);
+
+  float combo2X = combo1X;
+  float combo2Y = card1Y + 49.0f * scale;
+  GraphicsPath combo2Path;
+  AddRoundedRectF(combo2Path, combo2X, combo2Y, comboW, comboH, 4.0f * scale);
+  Color combo2Bg = g_HoverAccentCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
+                                     : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
+  SolidBrush combo2BgBrush(combo2Bg);
+  graphics.FillPath(&combo2BgBrush, &combo2Path);
+  graphics.DrawPath(&subCardBorderPen, &combo2Path);
+
+  wstring accentModeName = g_Settings.customAccent ? GetLocalizedText(UIStringId::AccentManual) : GetLocalizedText(UIStringId::AccentAuto);
+  RectF text2Rect(combo2X + 8.0f * scale, combo2Y, comboW - 24.0f * scale, comboH);
+  graphics.DrawString(accentModeName.c_str(), -1, &comboFont, text2Rect, &leftFmt, &labelBrush);
+
+  RectF arrow2Rect(combo2X + comboW - 20.0f * scale, combo2Y, 14.0f * scale, comboH);
+  graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow2Rect, &centerFormat, &labelBrush);
+
+  // Label: Cores do Windows
+  float label3Y = card1Y + 86.0f * scale;
+  RectF label3Rect(card1X + 12.0f * scale, label3Y, card1W - 24.0f * scale, 16.0f * scale);
+  graphics.DrawString(GetLocalizedText(UIStringId::WindowsColorsLabel).c_str(), -1, &labelFont, label3Rect, &leftFmt, &labelBrush);
+
+  // Grade de cores
+  float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale; // 256.0f * scale
+  float rowX = card1X + (card1W - gridWidth) / 2.0f;
+  float rowY = card1Y + 106.0f * scale;
+
+  float squareSize = 22.0f * scale;
+  float spacing = 4.0f * scale;
+
+  for (int i = 0; i < 50; i++) {
+    int row = i / 10;
+    int col = i % 10;
+    float sx = rowX + col * (squareSize + spacing);
+    float sy = rowY + row * (squareSize + spacing);
+
+    Color squareColor(WINDOWS_ACCENT_COLORS[i]);
+    SolidBrush squareBrush(squareColor);
+
+    GraphicsPath squarePath;
+    AddRoundedRectF(squarePath, sx, sy, squareSize, squareSize, 3.0f * scale);
+    graphics.FillPath(&squareBrush, &squarePath);
+
+    bool isSelected = g_Settings.customAccent && g_Settings.accentColor == WINDOWS_ACCENT_COLORS[i];
+    bool isHovered = (i == g_HoveredGridIndex);
+
+    if (isSelected) {
+      Pen borderPen(GetCurrentTextColor(), 2.0f * scale);
+      graphics.DrawPath(&borderPen, &squarePath);
+
+      Font iconFont2(&iconFontFamily, 11.0f * scale, FontStyleRegular, UnitPixel);
+      SolidBrush checkBrush(GetAccentForegroundColor(squareColor));
+      graphics.DrawString(L"\xE73E", -1, &iconFont2, RectF(sx, sy, squareSize, squareSize), &centerFormat, &checkBrush);
+    } else if (isHovered) {
+      Color textColor(GetCurrentTextColor());
+      Pen hoverPen(Color(180, textColor.GetRed(), textColor.GetGreen(), textColor.GetBlue()), 1.5f * scale);
+      graphics.DrawPath(&hoverPen, &squarePath);
+    } else {
+      Pen borderPen(Color(30, 128, 128, 128), 1.0f);
+      graphics.DrawPath(&borderPen, &squarePath);
+    }
+  }
+
+  // --- CARD 2: IDIOMA ---
+  float card2X = subCardX;
+  float card2Y = cardY + 280.0f * scale;
+  float card2W = subCardW;
+  float card2H = 80.0f * scale;
+
+  GraphicsPath card2Path;
+  AddRoundedRectF(card2Path, card2X, card2Y, card2W, card2H, 6.0f * scale);
+  graphics.FillPath(&subCardBgBrush, &card2Path);
+  graphics.DrawPath(&subCardBorderPen, &card2Path);
+
+  // Row 1: Idioma da interface
+  float row3Y = card2Y + 4.0f * scale;
+  RectF label4Rect(card2X + 12.0f * scale, row3Y, card2W - comboW - 20.0f * scale, 36.0f * scale);
+  graphics.DrawString(GetLocalizedText(UIStringId::InterfaceLanguageLabel).c_str(), -1, &labelFont, label4Rect, &leftFmt, &labelBrush);
+
+  float combo3X = card2X + card2W - comboW - 12.0f * scale;
+  float combo3Y = card2Y + 10.0f * scale;
+  GraphicsPath combo3Path;
+  AddRoundedRectF(combo3Path, combo3X, combo3Y, comboW, comboH, 4.0f * scale);
+  Color combo3Bg = g_HoverUILangCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
+                                     : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
+  SolidBrush combo3BgBrush(combo3Bg);
+  graphics.FillPath(&combo3BgBrush, &combo3Path);
+  graphics.DrawPath(&subCardBorderPen, &combo3Path);
+
+  wstring uiLangName = GetLocalizedText(UIStringId::LangAuto);
+  if (g_Settings.uiLanguage == 1) uiLangName = GetLocalizedText(UIStringId::LangPT);
+  else if (g_Settings.uiLanguage == 2) uiLangName = GetLocalizedText(UIStringId::LangEN);
+  else if (g_Settings.uiLanguage == 3) uiLangName = GetLocalizedText(UIStringId::LangES);
+  else if (g_Settings.uiLanguage == 4) uiLangName = GetLocalizedText(UIStringId::LangFR);
+  else if (g_Settings.uiLanguage == 5) uiLangName = GetLocalizedText(UIStringId::LangDE);
+  else if (g_Settings.uiLanguage == 6) uiLangName = GetLocalizedText(UIStringId::LangIT);
+
+  RectF text3Rect(combo3X + 8.0f * scale, combo3Y, comboW - 24.0f * scale, comboH);
+  graphics.DrawString(uiLangName.c_str(), -1, &comboFont, text3Rect, &leftFmt, &labelBrush);
+
+  RectF arrow3Rect(combo3X + comboW - 20.0f * scale, combo3Y, 14.0f * scale, comboH);
+  graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow3Rect, &centerFormat, &labelBrush);
+
+  // Divider 2
+  float div2Y = card2Y + 40.0f * scale;
+  graphics.DrawLine(&dividerPen, card2X + 12.0f * scale, div2Y, card2X + card2W - 12.0f * scale, div2Y);
+
+  // Row 2: Traduzir letras para
+  float row4Y = card2Y + 40.0f * scale;
+  RectF label5Rect(card2X + 12.0f * scale, row4Y, card2W - comboW - 20.0f * scale, 36.0f * scale);
+  graphics.DrawString(GetLocalizedText(UIStringId::TranslateToLabel).c_str(), -1, &labelFont, label5Rect, &leftFmt, &labelBrush);
+
+  float combo4X = combo3X;
+  float combo4Y = card2Y + 46.0f * scale;
+  GraphicsPath combo4Path;
+  AddRoundedRectF(combo4Path, combo4X, combo4Y, comboW, comboH, 4.0f * scale);
+  Color combo4Bg = g_HoverTransLangCombo ? (IsSystemLightMode() ? Color(40, 0, 0, 0) : Color(45, 255, 255, 255))
+                                        : (IsSystemLightMode() ? Color(20, 0, 0, 0) : Color(25, 255, 255, 255));
+  SolidBrush combo4BgBrush(combo4Bg);
+  graphics.FillPath(&combo4BgBrush, &combo4Path);
+  graphics.DrawPath(&subCardBorderPen, &combo4Path);
+
+  wstring transLangName = GetLocalizedText(UIStringId::LangAuto);
+  if (g_Settings.translationLanguage == 1) transLangName = GetLocalizedText(UIStringId::LangPT);
+  else if (g_Settings.translationLanguage == 2) transLangName = GetLocalizedText(UIStringId::LangEN);
+  else if (g_Settings.translationLanguage == 3) transLangName = GetLocalizedText(UIStringId::LangES);
+  else if (g_Settings.translationLanguage == 4) transLangName = GetLocalizedText(UIStringId::LangFR);
+  else if (g_Settings.translationLanguage == 5) transLangName = GetLocalizedText(UIStringId::LangDE);
+  else if (g_Settings.translationLanguage == 6) transLangName = GetLocalizedText(UIStringId::LangIT);
+
+  RectF text4Rect(combo4X + 8.0f * scale, combo4Y, comboW - 24.0f * scale, comboH);
+  graphics.DrawString(transLangName.c_str(), -1, &comboFont, text4Rect, &leftFmt, &labelBrush);
+
+  RectF arrow4Rect(combo4X + comboW - 20.0f * scale, combo4Y, 14.0f * scale, comboH);
+  graphics.DrawString(L"\xE70D", -1, &iconFontSmall, arrow4Rect, &centerFormat, &labelBrush);
+
+  // --- Dropdowns Flutuantes (Desenhar por Último) ---
+  wstring themeItems[3] = {
+    GetLocalizedText(UIStringId::ThemeAuto),
+    GetLocalizedText(UIStringId::ThemeLight),
+    GetLocalizedText(UIStringId::ThemeDark)
+  };
+
+  wstring accentItems[2] = {
+    GetLocalizedText(UIStringId::AccentAuto),
+    GetLocalizedText(UIStringId::AccentManual)
+  };
+
+  wstring langItems[7] = {
+    GetLocalizedText(UIStringId::LangAuto),
+    GetLocalizedText(UIStringId::LangPT),
+    GetLocalizedText(UIStringId::LangEN),
+    GetLocalizedText(UIStringId::LangES),
+    GetLocalizedText(UIStringId::LangFR),
+    GetLocalizedText(UIStringId::LangDE),
+    GetLocalizedText(UIStringId::LangIT)
+  };
+
+  // 1. Dropdown do Modo de Cor
+  if (g_ThemeDropdownOpen) {
+    float dropX = combo1X;
+    float dropY = combo1Y + comboH + 2.0f * scale;
+    float dropW = comboW;
+    float dropH = 3 * 28.0f * scale;
+
+    GraphicsPath dropPath;
+    AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
+    SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
+    graphics.FillPath(&dropBgBrush, &dropPath);
+    Pen dropBorderPen(borderColor, 1.0f);
+    graphics.DrawPath(&dropBorderPen, &dropPath);
+
+    for (int i = 0; i < 3; i++) {
+      float itemY = dropY + i * 28.0f * scale;
+
+      if (g_HoveredDropdownItem == i) {
+        GraphicsPath itemPath;
+        AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
+        SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
+        graphics.FillPath(&itemHoverBg, &itemPath);
+      }
+
+      if (g_Settings.theme == i) {
+        SolidBrush barBrush(GetWindowsAccentColor());
+        graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
+      }
+
+      RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
+      graphics.DrawString(themeItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
+    }
+  }
+
+  // 2. Dropdown do Modo de Cor de Sotaque
+  if (g_AccentDropdownOpen) {
+    float dropX = combo2X;
+    float dropY = combo2Y + comboH + 2.0f * scale;
+    float dropW = comboW;
+    float dropH = 2 * 28.0f * scale;
+
+    GraphicsPath dropPath;
+    AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
+    SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
+    graphics.FillPath(&dropBgBrush, &dropPath);
+    Pen dropBorderPen(borderColor, 1.0f);
+    graphics.DrawPath(&dropBorderPen, &dropPath);
+
+    for (int i = 0; i < 2; i++) {
+      float itemY = dropY + i * 28.0f * scale;
+
+      if (g_HoveredDropdownItem == i) {
+        GraphicsPath itemPath;
+        AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
+        SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
+        graphics.FillPath(&itemHoverBg, &itemPath);
+      }
+
+      bool isSelected = (i == 0 && !g_Settings.customAccent) || (i == 1 && g_Settings.customAccent);
+      if (isSelected) {
+        SolidBrush barBrush(GetWindowsAccentColor());
+        graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
+      }
+
+      RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
+      graphics.DrawString(accentItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
+    }
+  }
+
+  // 3. Dropdown de Idioma da Interface
+  if (g_UILangDropdownOpen) {
+    float dropX = combo3X;
+    float dropY = combo3Y + comboH + 2.0f * scale;
+    float dropW = comboW;
+    float dropH = 7 * 28.0f * scale;
+
+    GraphicsPath dropPath;
+    AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
+    SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
+    graphics.FillPath(&dropBgBrush, &dropPath);
+    Pen dropBorderPen(borderColor, 1.0f);
+    graphics.DrawPath(&dropBorderPen, &dropPath);
+
+    for (int i = 0; i < 7; i++) {
+      float itemY = dropY + i * 28.0f * scale;
+
+      if (g_HoveredDropdownItem == i) {
+        GraphicsPath itemPath;
+        AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
+        SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
+        graphics.FillPath(&itemHoverBg, &itemPath);
+      }
+
+      if (g_Settings.uiLanguage == i) {
+        SolidBrush barBrush(GetWindowsAccentColor());
+        graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
+      }
+
+      RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
+      graphics.DrawString(langItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
+    }
+  }
+
+  // 4. Dropdown de Idioma de Tradução (abre para CIMA)
+  if (g_TransLangDropdownOpen) {
+    float dropX = combo4X;
+    float dropW = comboW;
+    float dropH = 7 * 28.0f * scale;
+    float dropY = combo4Y - dropH - 2.0f * scale;
+
+    GraphicsPath dropPath;
+    AddRoundedRectF(dropPath, dropX, dropY, dropW, dropH, 4.0f * scale);
+    SolidBrush dropBgBrush(IsSystemLightMode() ? Color(255, 255, 255, 255) : Color(255, 45, 45, 45));
+    graphics.FillPath(&dropBgBrush, &dropPath);
+    Pen dropBorderPen(borderColor, 1.0f);
+    graphics.DrawPath(&dropBorderPen, &dropPath);
+
+    for (int i = 0; i < 7; i++) {
+      float itemY = dropY + i * 28.0f * scale;
+
+      if (g_HoveredDropdownItem == i) {
+        GraphicsPath itemPath;
+        AddRoundedRectF(itemPath, dropX + 2.0f * scale, itemY + 2.0f * scale, dropW - 4.0f * scale, 24.0f * scale, 3.0f * scale);
+        SolidBrush itemHoverBg(IsSystemLightMode() ? Color(25, 0, 0, 0) : Color(25, 255, 255, 255));
+        graphics.FillPath(&itemHoverBg, &itemPath);
+      }
+
+      if (g_Settings.translationLanguage == i) {
+        SolidBrush barBrush(GetWindowsAccentColor());
+        graphics.FillRectangle(&barBrush, dropX + 4.0f * scale, itemY + 6.0f * scale, 3.0f * scale, 16.0f * scale);
+      }
+
+      RectF textRect(dropX + 12.0f * scale, itemY, dropW - 16.0f * scale, 28.0f * scale);
+      graphics.DrawString(langItems[i].c_str(), -1, &comboFont, textRect, &leftFmt, &labelBrush);
+    }
+  }
+}
+
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  switch (msg) {
+  case WM_MOUSEACTIVATE:
+    return MA_NOACTIVATE;
+  case WM_TIMER:
+    if (wParam == IDT_FLYOUT_ANIMATION) {
+      bool stillAnimating = false;
+      float targetT = (g_SettingsState == 1 || g_SettingsState == 2) ? 1.0f : 0.0f;
+      
+      if (!IsAnimationEnabled()) {
+        g_SettingsAnimT = targetT;
+      } else {
+        float step = 0.07f; // ~14 frames (210ms) at 60fps
+        if (g_SettingsAnimT < targetT) {
+          g_SettingsAnimT += step;
+          if (g_SettingsAnimT > targetT) g_SettingsAnimT = targetT;
+          stillAnimating = true;
+        } else if (g_SettingsAnimT > targetT) {
+          g_SettingsAnimT -= step;
+          if (g_SettingsAnimT < targetT) g_SettingsAnimT = targetT;
+          stillAnimating = true;
+        }
+      }
+
+      g_SettingsOpenProgress = EaseOutCubic(g_SettingsAnimT);
+      if (g_SettingsAnimT != targetT) {
+        stillAnimating = true;
+      }
+
+      if (!stillAnimating) {
+        if (targetT == 0.0f) {
+          g_SettingsState = 0;
+        } else if (g_SettingsState == 1) {
+          g_SettingsState = 2;
+        }
+      }
+
+      g_SettingsAlpha = (int)(g_SettingsOpenProgress * 255.0f);
+
+      if (g_SettingsState == 0) {
+        KillTimer(hwnd, IDT_FLYOUT_ANIMATION);
+        ShowWindow(hwnd, SW_HIDE);
+        ShowWindow(g_hSettingsChildWindow, SW_HIDE);
+      } else {
+        UpdateSettingsWindow();
+        if (!stillAnimating && g_SettingsState == 2) {
+          KillTimer(hwnd, IDT_FLYOUT_ANIMATION);
+        }
+      }
+    }
+    return 0;
+
+  case WM_DESTROY:
+    return 0;
+  }
+  return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK SettingsChildWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+  RECT rcClient;
+  GetClientRect(hwnd, &rcClient);
+  int w = rcClient.right - rcClient.left;
+  int h = rcClient.bottom - rcClient.top;
+  float scale = (float)w / 360.0f;
+  if (scale <= 0.0f)
+    scale = 1.0f;
+
+  float cardW = 340.0f * scale;
+  float cardH = 360.0f * scale;
+  float cardX = (w - cardW) / 2.0f;
+  float cardY = 10.0f * scale;
+
+  float subCardX = cardX + 10.0f * scale;
+  float subCardW = cardW - 20.0f * scale;
+  float comboW = 100.0f * scale;
+  float comboH = 24.0f * scale;
+
+  float card1X = subCardX;
+  float card1Y = cardY + 30.0f * scale;
+  float card1W = subCardW;
+  float combo1X = card1X + card1W - comboW - 12.0f * scale;
+  float combo1Y = card1Y + 12.0f * scale;
+  float combo2X = combo1X;
+  float combo2Y = card1Y + 49.0f * scale;
+
+  float card2X = subCardX;
+  float card2Y = cardY + 280.0f * scale;
+  float card2W = subCardW;
+  float combo3X = card2X + card2W - comboW - 12.0f * scale;
+  float combo3Y = card2Y + 10.0f * scale;
+  float combo4X = combo3X;
+  float combo4Y = card2Y + 46.0f * scale;
+
+  switch (msg) {
+  case WM_MOUSEACTIVATE:
+    return MA_NOACTIVATE;
+  case WM_ERASEBKGND:
+    return 1;
+
+  case WM_MOUSEMOVE: {
+    int x = (short)LOWORD(lParam);
+    int y = (short)HIWORD(lParam);
+
+    bool repaintNeeded = false;
+
+    // Check dropdown hovers
+    if (g_ThemeDropdownOpen) {
+      float dropX = combo1X;
+      float dropY = combo1Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 3 * 28.0f * scale;
+
+      int hoveredItem = -1;
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        hoveredItem = (int)((y - dropY) / (28.0f * scale));
+        if (hoveredItem < 0) hoveredItem = 0;
+        if (hoveredItem > 2) hoveredItem = 2;
+      }
+      if (hoveredItem != g_HoveredDropdownItem) {
+        g_HoveredDropdownItem = hoveredItem;
+        repaintNeeded = true;
+      }
+    }
+    else if (g_AccentDropdownOpen) {
+      float dropX = combo2X;
+      float dropY = combo2Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 2 * 28.0f * scale;
+
+      int hoveredItem = -1;
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        hoveredItem = (int)((y - dropY) / (28.0f * scale));
+        if (hoveredItem < 0) hoveredItem = 0;
+        if (hoveredItem > 1) hoveredItem = 1;
+      }
+      if (hoveredItem != g_HoveredDropdownItem) {
+        g_HoveredDropdownItem = hoveredItem;
+        repaintNeeded = true;
+      }
+    }
+    else if (g_UILangDropdownOpen) {
+      float dropX = combo3X;
+      float dropY = combo3Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 7 * 28.0f * scale;
+
+      int hoveredItem = -1;
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        hoveredItem = (int)((y - dropY) / (28.0f * scale));
+        if (hoveredItem < 0) hoveredItem = 0;
+        if (hoveredItem > 6) hoveredItem = 6;
+      }
+      if (hoveredItem != g_HoveredDropdownItem) {
+        g_HoveredDropdownItem = hoveredItem;
+        repaintNeeded = true;
+      }
+    }
+    else if (g_TransLangDropdownOpen) {
+      float dropX = combo4X;
+      float dropW = comboW;
+      float dropH = 7 * 28.0f * scale;
+      float dropY = combo4Y - dropH - 2.0f * scale; // UP
+
+      int hoveredItem = -1;
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        hoveredItem = (int)((y - dropY) / (28.0f * scale));
+        if (hoveredItem < 0) hoveredItem = 0;
+        if (hoveredItem > 6) hoveredItem = 6;
+      }
+      if (hoveredItem != g_HoveredDropdownItem) {
+        g_HoveredDropdownItem = hoveredItem;
+        repaintNeeded = true;
+      }
+    }
+    // Default combos and grid hovers
+    else {
+      bool overThemeCombo = (x >= combo1X && x <= combo1X + comboW && y >= combo1Y && y <= combo1Y + comboH);
+      bool overAccentCombo = (x >= combo2X && x <= combo2X + comboW && y >= combo2Y && y <= combo2Y + comboH);
+      bool overUILangCombo = (x >= combo3X && x <= combo3X + comboW && y >= combo3Y && y <= combo3Y + comboH);
+      bool overTransLangCombo = (x >= combo4X && x <= combo4X + comboW && y >= combo4Y && y <= combo4Y + comboH);
+
+      if (overThemeCombo != g_HoverThemeCombo) {
+        g_HoverThemeCombo = overThemeCombo;
+        repaintNeeded = true;
+      }
+      if (overAccentCombo != g_HoverAccentCombo) {
+        g_HoverAccentCombo = overAccentCombo;
+        repaintNeeded = true;
+      }
+      if (overUILangCombo != g_HoverUILangCombo) {
+        g_HoverUILangCombo = overUILangCombo;
+        repaintNeeded = true;
+      }
+      if (overTransLangCombo != g_HoverTransLangCombo) {
+        g_HoverTransLangCombo = overTransLangCombo;
+        repaintNeeded = true;
+      }
+
+      // Check color grid hover
+      float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale;
+      float rowX = card1X + (card1W - gridWidth) / 2.0f;
+      float rowY = card1Y + 106.0f * scale;
+
+      float squareSize = 22.0f * scale;
+      float spacing = 4.0f * scale;
+
+      int hoveredGridIndex = -1;
+      for (int i = 0; i < 50; i++) {
+        int row = i / 10;
+        int col = i % 10;
+        float sx = rowX + col * (squareSize + spacing);
+        float sy = rowY + row * (squareSize + spacing);
+
+        if (x >= sx && x <= sx + squareSize && y >= sy && y <= sy + squareSize) {
+          hoveredGridIndex = i;
+          break;
+        }
+      }
+
+      if (hoveredGridIndex != g_HoveredGridIndex) {
+        g_HoveredGridIndex = hoveredGridIndex;
+        repaintNeeded = true;
+      }
+    }
+
+    if (repaintNeeded) {
+      UpdateSettingsWindow();
+    }
+
+    TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0};
+    TrackMouseEvent(&tme);
+    return 0;
+  }
+
+  case WM_LBUTTONDOWN:
+    return 0;
+
+  case WM_LBUTTONUP: {
+    int x = (short)LOWORD(lParam);
+    int y = (short)HIWORD(lParam);
+
+    bool clickedInside = (x >= cardX && x <= cardX + cardW && y >= cardY && y <= cardY + cardH);
+    bool clickedOption = false;
+
+    if (!clickedInside) {
+      g_SettingsCardOpen = false;
+      g_ThemeDropdownOpen = false;
+      g_AccentDropdownOpen = false;
+      g_UILangDropdownOpen = false;
+      g_TransLangDropdownOpen = false;
+
+      g_SettingsState = 3; // Closing
+      SetTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION, 15, NULL);
+
+      InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+      UpdateFlyoutWindow();
+      return 0;
+    }
+
+    // 1. Theme dropdown clicked
+    if (g_ThemeDropdownOpen) {
+      float dropX = combo1X;
+      float dropY = combo1Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 3 * 28.0f * scale;
+
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        int clickedItem = (int)((y - dropY) / (28.0f * scale));
+        if (clickedItem >= 0 && clickedItem <= 2) {
+          g_Settings.theme = clickedItem;
+          SaveSettings();
+        }
+      }
+      g_ThemeDropdownOpen = false;
+      clickedOption = true;
+    }
+    // 2. Accent dropdown clicked
+    else if (g_AccentDropdownOpen) {
+      float dropX = combo2X;
+      float dropY = combo2Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 2 * 28.0f * scale;
+
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        int clickedItem = (int)((y - dropY) / (28.0f * scale));
+        if (clickedItem == 0) {
+          g_Settings.customAccent = false;
+          UpdateAccentColorCache();
+          SaveSettings();
+        } else if (clickedItem == 1) {
+          g_Settings.customAccent = true;
+          bool isValid = false;
+          for (int i = 0; i < 50; i++) {
+            if (g_Settings.accentColor == WINDOWS_ACCENT_COLORS[i]) {
+              isValid = true;
+              break;
+            }
+          }
+          if (!isValid) {
+            g_Settings.accentColor = WINDOWS_ACCENT_COLORS[16]; // Blue default
+          }
+          UpdateAccentColorCache();
+          SaveSettings();
+        }
+      }
+      g_AccentDropdownOpen = false;
+      clickedOption = true;
+    }
+    // 3. UI Lang dropdown clicked
+    else if (g_UILangDropdownOpen) {
+      float dropX = combo3X;
+      float dropY = combo3Y + comboH + 2.0f * scale;
+      float dropW = comboW;
+      float dropH = 7 * 28.0f * scale;
+
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        int clickedItem = (int)((y - dropY) / (28.0f * scale));
+        if (clickedItem >= 0 && clickedItem <= 6) {
+          g_Settings.uiLanguage = clickedItem;
+          SaveSettings();
+        }
+      }
+      g_UILangDropdownOpen = false;
+      clickedOption = true;
+    }
+    // 4. Translation Lang dropdown clicked (UP)
+    else if (g_TransLangDropdownOpen) {
+      float dropX = combo4X;
+      float dropW = comboW;
+      float dropH = 7 * 28.0f * scale;
+      float dropY = combo4Y - dropH - 2.0f * scale;
+
+      if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
+        int clickedItem = (int)((y - dropY) / (28.0f * scale));
+        if (clickedItem >= 0 && clickedItem <= 6) {
+          g_Settings.translationLanguage = clickedItem;
+          SaveSettings();
+
+          if (g_TranslateLyrics) {
+            FetchTranslationThread();
+          }
+        }
+      }
+      g_TransLangDropdownOpen = false;
+      clickedOption = true;
+    }
+    // 5. Default clicks
+    else {
+      if (x >= combo1X && x <= combo1X + comboW && y >= combo1Y && y <= combo1Y + comboH) {
+        g_ThemeDropdownOpen = true;
+        clickedOption = true;
+      }
+      else if (x >= combo2X && x <= combo2X + comboW && y >= combo2Y && y <= combo2Y + comboH) {
+        g_AccentDropdownOpen = true;
+        clickedOption = true;
+      }
+      else if (x >= combo3X && x <= combo3X + comboW && y >= combo3Y && y <= combo3Y + comboH) {
+        g_UILangDropdownOpen = true;
+        clickedOption = true;
+      }
+      else if (x >= combo4X && x <= combo4X + comboW && y >= combo4Y && y <= combo4Y + comboH) {
+        g_TransLangDropdownOpen = true;
+        clickedOption = true;
+      }
+      else {
+        float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale;
+        float rowX = card1X + (card1W - gridWidth) / 2.0f;
+        float rowY = card1Y + 106.0f * scale;
+
+        float squareSize = 22.0f * scale;
+        float spacing = 4.0f * scale;
+
+        for (int i = 0; i < 50; i++) {
+          int row = i / 10;
+          int col = i % 10;
+          float sx = rowX + col * (squareSize + spacing);
+          float sy = rowY + row * (squareSize + spacing);
+
+          if (x >= sx && x <= sx + squareSize && y >= sy && y <= sy + squareSize) {
+            g_Settings.customAccent = true;
+            g_Settings.accentColor = WINDOWS_ACCENT_COLORS[i];
+            UpdateAccentColorCache();
+            SaveSettings();
+            clickedOption = true;
+            break;
+          }
+        }
+      }
+
+      if (!clickedOption) {
+        clickedOption = true;
+      }
+    }
+
+    UpdateSettingsWindow();
+    InvalidateRect(g_hFlyoutWindow, NULL, TRUE);
+    UpdateFlyoutWindow();
+    PostMessage(g_hMediaWindow, WM_SETTINGCHANGE, 0, 0); 
+    return 0;
+  }
+
+  case WM_MOUSELEAVE: {
+    bool repaintNeeded = false;
+    if (g_HoverThemeCombo || g_HoverAccentCombo || g_HoverUILangCombo || g_HoverTransLangCombo ||
+        g_HoveredDropdownItem != -1 || g_HoveredGridIndex != -1) {
+      g_HoverThemeCombo = false;
+      g_HoverAccentCombo = false;
+      g_HoverUILangCombo = false;
+      g_HoverTransLangCombo = false;
+      g_HoveredDropdownItem = -1;
+      g_HoveredGridIndex = -1;
+      repaintNeeded = true;
+    }
+    if (repaintNeeded) {
+      UpdateSettingsWindow();
+    }
+    return 0;
+  }
+  }
+  return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
 LRESULT CALLBACK FlyoutChildWndProc(HWND hwnd, UINT msg, WPARAM wParam,
                                     LPARAM lParam) {
   wstring appId = L"";
@@ -3705,20 +4385,15 @@ LRESULT CALLBACK FlyoutChildWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     int y = (short)HIWORD(lParam);
 
     float hitMargin = 12.0f;
-    bool overBar = false;
-    bool overVolume = false;
+    bool overBar = (x >= g_ProgressBarX - hitMargin &&
+                    x <= g_ProgressBarX + g_ProgressBarW + hitMargin &&
+                    y >= g_ProgressBarY - hitMargin &&
+                    y <= g_ProgressBarY + g_ProgressBarH + hitMargin);
 
-    if (!g_SettingsCardOpen) {
-      overBar = (x >= g_ProgressBarX - hitMargin &&
-                 x <= g_ProgressBarX + g_ProgressBarW + hitMargin &&
-                 y >= g_ProgressBarY - hitMargin &&
-                 y <= g_ProgressBarY + g_ProgressBarH + hitMargin);
-
-      float volHitMarginV = 30.0f * scale;
-      overVolume =
-          (x >= g_VolumeAreaX && x <= g_VolumeAreaX + g_VolumeAreaW &&
-           y >= g_VolumeY - volHitMarginV && y <= rcClient.bottom);
-    }
+    float volHitMarginV = 30.0f * scale;
+    bool overVolume =
+        (x >= g_VolumeAreaX && x <= g_VolumeAreaX + g_VolumeAreaW &&
+         y >= g_VolumeY - volHitMarginV && y <= rcClient.bottom);
 
     if (g_ProgressDragging) {
       float rel = ((float)x - g_ProgressBarX) / g_ProgressBarW;
@@ -3760,167 +4435,6 @@ LRESULT CALLBACK FlyoutChildWndProc(HWND hwnd, UINT msg, WPARAM wParam,
           SetTimer(parent, IDT_FLYOUT_ANIMATION, 15, NULL);
         }
       }
-
-      // Lógica de hover para o card de configurações
-      if (g_SettingsCardOpen) {
-        int w = rcClient.right - rcClient.left;
-        int h = rcClient.bottom - rcClient.top;
-        float cardW = 310.0f * scale;
-        float cardH = 372.0f * scale;
-        float cardX = (w - cardW) / 2.0f;
-        float cardY = (h - cardH) / 2.0f;
-
-        float subCardX = cardX + 10.0f * scale;
-        float subCardW = cardW - 20.0f * scale;
-        float comboW = 100.0f * scale;
-        float comboH = 24.0f * scale;
-
-        float card1X = subCardX;
-        float card1Y = cardY + 36.0f * scale;
-        float card1W = subCardW;
-        float combo1X = card1X + card1W - comboW - 12.0f * scale;
-        float combo1Y = card1Y + 12.0f * scale;
-        float combo2X = combo1X;
-        float combo2Y = card1Y + 49.0f * scale;
-
-        float card2X = subCardX;
-        float card2Y = cardY + 284.0f * scale;
-        float card2W = subCardW;
-        float combo3X = card2X + card2W - comboW - 12.0f * scale;
-        float combo3Y = card2Y + 10.0f * scale;
-        float combo4X = combo3X;
-        float combo4Y = card2Y + 46.0f * scale;
-
-        bool repaintNeeded = false;
-
-        // Se algum dropdown estiver aberto, verifica hover em seus itens
-        if (g_ThemeDropdownOpen) {
-          float dropX = combo1X;
-          float dropY = combo1Y + comboH + 2.0f * scale;
-          float dropW = comboW;
-          float dropH = 3 * 28.0f * scale;
-
-          int hoveredItem = -1;
-          if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-            hoveredItem = (int)((y - dropY) / (28.0f * scale));
-            if (hoveredItem < 0) hoveredItem = 0;
-            if (hoveredItem > 2) hoveredItem = 2;
-          }
-          if (hoveredItem != g_HoveredDropdownItem) {
-            g_HoveredDropdownItem = hoveredItem;
-            repaintNeeded = true;
-          }
-        }
-        else if (g_AccentDropdownOpen) {
-          float dropX = combo2X;
-          float dropY = combo2Y + comboH + 2.0f * scale;
-          float dropW = comboW;
-          float dropH = 2 * 28.0f * scale;
-
-          int hoveredItem = -1;
-          if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-            hoveredItem = (int)((y - dropY) / (28.0f * scale));
-            if (hoveredItem < 0) hoveredItem = 0;
-            if (hoveredItem > 1) hoveredItem = 1;
-          }
-          if (hoveredItem != g_HoveredDropdownItem) {
-            g_HoveredDropdownItem = hoveredItem;
-            repaintNeeded = true;
-          }
-        }
-        else if (g_UILangDropdownOpen) {
-          float dropX = combo3X;
-          float dropY = combo3Y + comboH + 2.0f * scale;
-          float dropW = comboW;
-          float dropH = 7 * 28.0f * scale;
-
-          int hoveredItem = -1;
-          if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-            hoveredItem = (int)((y - dropY) / (28.0f * scale));
-            if (hoveredItem < 0) hoveredItem = 0;
-            if (hoveredItem > 6) hoveredItem = 6;
-          }
-          if (hoveredItem != g_HoveredDropdownItem) {
-            g_HoveredDropdownItem = hoveredItem;
-            repaintNeeded = true;
-          }
-        }
-        else if (g_TransLangDropdownOpen) {
-          float dropX = combo4X;
-          float dropW = comboW;
-          float dropH = 7 * 28.0f * scale;
-          float dropY = combo4Y - dropH - 2.0f * scale; // UP
-
-          int hoveredItem = -1;
-          if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-            hoveredItem = (int)((y - dropY) / (28.0f * scale));
-            if (hoveredItem < 0) hoveredItem = 0;
-            if (hoveredItem > 6) hoveredItem = 6;
-          }
-          if (hoveredItem != g_HoveredDropdownItem) {
-            g_HoveredDropdownItem = hoveredItem;
-            repaintNeeded = true;
-          }
-        }
-        // Estado padrão (nenhum dropdown aberto)
-        else {
-          bool overThemeCombo = (x >= combo1X && x <= combo1X + comboW && y >= combo1Y && y <= combo1Y + comboH);
-          bool overAccentCombo = (x >= combo2X && x <= combo2X + comboW && y >= combo2Y && y <= combo2Y + comboH);
-          bool overUILangCombo = (x >= combo3X && x <= combo3X + comboW && y >= combo3Y && y <= combo3Y + comboH);
-          bool overTransLangCombo = (x >= combo4X && x <= combo4X + comboW && y >= combo4Y && y <= combo4Y + comboH);
-
-          if (overThemeCombo != g_HoverThemeCombo) {
-            g_HoverThemeCombo = overThemeCombo;
-            repaintNeeded = true;
-          }
-          if (overAccentCombo != g_HoverAccentCombo) {
-            g_HoverAccentCombo = overAccentCombo;
-            repaintNeeded = true;
-          }
-          if (overUILangCombo != g_HoverUILangCombo) {
-            g_HoverUILangCombo = overUILangCombo;
-            repaintNeeded = true;
-          }
-          if (overTransLangCombo != g_HoverTransLangCombo) {
-            g_HoverTransLangCombo = overTransLangCombo;
-            repaintNeeded = true;
-          }
-
-          // Hover na grade de cores
-          float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale;
-          float rowX = card1X + (card1W - gridWidth) / 2.0f;
-          float rowY = card1Y + 106.0f * scale;
-
-          float squareSize = 22.0f * scale;
-          float spacing = 4.0f * scale;
-
-          int hoveredGridIndex = -1;
-          for (int i = 0; i < 50; i++) {
-            int row = i / 10;
-            int col = i % 10;
-            float sx = rowX + col * (squareSize + spacing);
-            float sy = rowY + row * (squareSize + spacing);
-
-            if (x >= sx && x <= sx + squareSize && y >= sy && y <= sy + squareSize) {
-              hoveredGridIndex = i;
-              break;
-            }
-          }
-
-          if (hoveredGridIndex != g_HoveredGridIndex) {
-            g_HoveredGridIndex = hoveredGridIndex;
-            repaintNeeded = true;
-          }
-        }
-
-        if (repaintNeeded) {
-          HWND parent = GetParent(hwnd);
-          if (parent) {
-            InvalidateRect(parent, NULL, TRUE);
-            UpdateFlyoutWindow();
-          }
-        }
-      }
     }
 
     TRACKMOUSEEVENT tme = {sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0};
@@ -3929,9 +4443,6 @@ LRESULT CALLBACK FlyoutChildWndProc(HWND hwnd, UINT msg, WPARAM wParam,
   }
 
   case WM_LBUTTONDOWN: {
-    if (g_SettingsCardOpen) {
-      return 0;
-    }
     int x = (short)LOWORD(lParam);
     int y = (short)HIWORD(lParam);
 
@@ -4045,207 +4556,35 @@ LRESULT CALLBACK FlyoutChildWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     float transY1 = pinY1;
     float transY2 = transY1 + headerBtnH;
 
-    if (g_SettingsCardOpen) {
-        float cardW = 310.0f * scale;
-        float cardH = 372.0f * scale;
-        float cardX = (w - cardW) / 2.0f;
-        float cardY = (h - cardH) / 2.0f;
-
-        float subCardX = cardX + 10.0f * scale;
-        float subCardW = cardW - 20.0f * scale;
-        float comboW = 100.0f * scale;
-        float comboH = 24.0f * scale;
-
-        float card1X = subCardX;
-        float card1Y = cardY + 36.0f * scale;
-        float card1W = subCardW;
-        float combo1X = card1X + card1W - comboW - 12.0f * scale;
-        float combo1Y = card1Y + 12.0f * scale;
-        float combo2X = combo1X;
-        float combo2Y = card1Y + 49.0f * scale;
-
-        float card2X = subCardX;
-        float card2Y = cardY + 284.0f * scale;
-        float card2W = subCardW;
-        float combo3X = card2X + card2W - comboW - 12.0f * scale;
-        float combo3Y = card2Y + 10.0f * scale;
-        float combo4X = combo3X;
-        float combo4Y = card2Y + 46.0f * scale;
-
-        bool clickedInside = (x >= cardX && x <= cardX + cardW && y >= cardY && y <= cardY + cardH);
-        bool clickedOption = false;
-
-        if (!clickedInside) {
-            g_SettingsCardOpen = false;
-            g_ThemeDropdownOpen = false;
-            g_AccentDropdownOpen = false;
-            g_UILangDropdownOpen = false;
-            g_TransLangDropdownOpen = false;
-        } else {
-            // 1. Se o dropdown de temas estiver aberto, intercepta o clique
-            if (g_ThemeDropdownOpen) {
-                float dropX = combo1X;
-                float dropY = combo1Y + comboH + 2.0f * scale;
-                float dropW = comboW;
-                float dropH = 3 * 28.0f * scale;
-
-                if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-                    int clickedItem = (int)((y - dropY) / (28.0f * scale));
-                    if (clickedItem >= 0 && clickedItem <= 2) {
-                        g_Settings.theme = clickedItem;
-                        SaveSettings();
-                    }
-                }
-                g_ThemeDropdownOpen = false;
-                clickedOption = true;
-            }
-            // 2. Se o dropdown de cores de destaque estiver aberto
-            else if (g_AccentDropdownOpen) {
-                float dropX = combo2X;
-                float dropY = combo2Y + comboH + 2.0f * scale;
-                float dropW = comboW;
-                float dropH = 2 * 28.0f * scale;
-
-                if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-                    int clickedItem = (int)((y - dropY) / (28.0f * scale));
-                    if (clickedItem == 0) {
-                        g_Settings.customAccent = false;
-                        UpdateAccentColorCache();
-                        SaveSettings();
-                    } else if (clickedItem == 1) {
-                        g_Settings.customAccent = true;
-                        bool isValid = false;
-                        for (int i = 0; i < 50; i++) {
-                            if (g_Settings.accentColor == WINDOWS_ACCENT_COLORS[i]) {
-                                isValid = true;
-                                break;
-                            }
-                        }
-                        if (!isValid) {
-                            g_Settings.accentColor = WINDOWS_ACCENT_COLORS[16]; // Azul padrão
-                        }
-                        UpdateAccentColorCache();
-                        SaveSettings();
-                    }
-                }
-                g_AccentDropdownOpen = false;
-                clickedOption = true;
-            }
-            // 3. Se o dropdown de idioma da interface estiver aberto
-            else if (g_UILangDropdownOpen) {
-                float dropX = combo3X;
-                float dropY = combo3Y + comboH + 2.0f * scale;
-                float dropW = comboW;
-                float dropH = 7 * 28.0f * scale;
-
-                if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-                    int clickedItem = (int)((y - dropY) / (28.0f * scale));
-                    if (clickedItem >= 0 && clickedItem <= 6) {
-                        g_Settings.uiLanguage = clickedItem;
-                        SaveSettings();
-                    }
-                }
-                g_UILangDropdownOpen = false;
-                clickedOption = true;
-            }
-            // 4. Se o dropdown de idioma da tradução estiver aberto (abre para CIMA)
-            else if (g_TransLangDropdownOpen) {
-                float dropX = combo4X;
-                float dropW = comboW;
-                float dropH = 7 * 28.0f * scale;
-                float dropY = combo4Y - dropH - 2.0f * scale; // UP
-
-                if (x >= dropX && x <= dropX + dropW && y >= dropY && y <= dropY + dropH) {
-                    int clickedItem = (int)((y - dropY) / (28.0f * scale));
-                    if (clickedItem >= 0 && clickedItem <= 6) {
-                        g_Settings.translationLanguage = clickedItem;
-                        SaveSettings();
-
-                        // Recalcula tradução se ativa
-                        if (g_TranslateLyrics) {
-                            FetchTranslationThread();
-                        }
-                    }
-                }
-                g_TransLangDropdownOpen = false;
-                clickedOption = true;
-            }
-            // 5. Comportamento padrão (sem dropdowns abertos)
-            else {
-                // Clique no combobox de tema
-                if (x >= combo1X && x <= combo1X + comboW && y >= combo1Y && y <= combo1Y + comboH) {
-                    g_ThemeDropdownOpen = true;
-                    clickedOption = true;
-                }
-                // Clique no combobox de cor de destaque
-                else if (x >= combo2X && x <= combo2X + comboW && y >= combo2Y && y <= combo2Y + comboH) {
-                    g_AccentDropdownOpen = true;
-                    clickedOption = true;
-                }
-                // Clique no combobox de idioma da interface
-                else if (x >= combo3X && x <= combo3X + comboW && y >= combo3Y && y <= combo3Y + comboH) {
-                    g_UILangDropdownOpen = true;
-                    clickedOption = true;
-                }
-                // Clique no combobox de idioma da tradução
-                else if (x >= combo4X && x <= combo4X + comboW && y >= combo4Y && y <= combo4Y + comboH) {
-                    g_TransLangDropdownOpen = true;
-                    clickedOption = true;
-                }
-                // Clique na grade de cores (sempre visível)
-                else {
-                    float gridWidth = 10 * 22.0f * scale + 9 * 4.0f * scale;
-                    float rowX = card1X + (card1W - gridWidth) / 2.0f;
-                    float rowY = card1Y + 106.0f * scale;
-
-                    float squareSize = 22.0f * scale;
-                    float spacing = 4.0f * scale;
-
-                    for (int i = 0; i < 50; i++) {
-                        int row = i / 10;
-                        int col = i % 10;
-                        float sx = rowX + col * (squareSize + spacing);
-                        float sy = rowY + row * (squareSize + spacing);
-
-                        if (x >= sx && x <= sx + squareSize && y >= sy && y <= sy + squareSize) {
-                            g_Settings.customAccent = true;
-                            g_Settings.accentColor = WINDOWS_ACCENT_COLORS[i];
-                            UpdateAccentColorCache();
-                            SaveSettings();
-                            clickedOption = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Se clicou em outra parte de dentro do card, mantém o menu aberto
-                if (!clickedOption) {
-                    clickedOption = true;
-                }
-            }
-        }
-
-        HWND parent = GetParent(hwnd);
-        if (parent) {
-            InvalidateRect(parent, NULL, TRUE);
-            PostMessage(g_hMediaWindow, WM_SETTINGCHANGE, 0, 0); 
-        }
-        return 0;
-    }
-
     if (x >= settingsBtnX1 && x <= settingsBtnX2 && y >= settingsBtnY1 && y <= settingsBtnY2) {
-      g_SettingsCardOpen = true;
+      g_SettingsCardOpen = !g_SettingsCardOpen;
+      if (g_SettingsCardOpen) {
+        g_SettingsState = 1; // Opening
+        g_SettingsAnimT = 0.0f;
+        g_SettingsOpenProgress = 0.0f;
+        g_SettingsAlpha = 0;
+        
+        UpdateSettingsWindow(); // Position it
+        ShowWindow(g_hSettingsWindow, SW_SHOWNOACTIVATE);
+        ShowWindow(g_hSettingsChildWindow, SW_SHOWNOACTIVATE);
+        SetTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION, 15, NULL); // Inicia timer no settings window
+      } else {
+        g_SettingsState = 3; // Closing
+        SetTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION, 15, NULL);
+      }
       HWND parent = GetParent(hwnd);
       if (parent) {
         InvalidateRect(parent, NULL, TRUE);
+        UpdateFlyoutWindow();
       }
+      return 0;
     } else if (x >= pinX1 && x <= pinX2 && y >= pinY1 && y <= pinY2) {
       g_FlyoutPinned = !g_FlyoutPinned;
       HWND parent = GetParent(hwnd);
       if (parent) {
         InvalidateRect(parent, NULL, TRUE);
       }
-    } else if (x >= transX1 && x <= transX2 && y >= transY1 && y <= transY2) {
+    } else if (x >= transX1 && x <= transX2 && y >= transY1 && y <= transY2 && g_HasLyrics) {
       g_TranslateLyrics = !g_TranslateLyrics;
       if (g_TranslateLyrics) {
         FetchTranslationThread();
@@ -4384,6 +4723,10 @@ LRESULT CALLBACK FlyoutWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     }
     return 0;
 
+  case APP_WM_START_FLYOUT_ANIM:
+    SetTimer(hwnd, IDT_FLYOUT_ANIMATION, 15, NULL);
+    return 0;
+
   case WM_TIMER:
     if (wParam == IDT_FLYOUT_ANIMATION) {
       bool stillAnimating = false;
@@ -4437,7 +4780,26 @@ LRESULT CALLBACK FlyoutWndProc(HWND hwnd, UINT msg, WPARAM wParam,
       g_FlyoutAlpha = (int)(g_FlyoutOpenProgress * 255.0f);
 
       g_LyricsExpandProgress = 1.0f;
-      g_FlyoutCurrentHeight = g_FlyoutExpandedHeight;
+      
+      float targetHeight = GetFlyoutTargetHeight();
+      if (g_FlyoutState == 1) {
+        g_FlyoutCurrentHeight = targetHeight;
+      } else if (g_FlyoutState == 2) {
+        if (!IsAnimationEnabled()) {
+          g_FlyoutCurrentHeight = targetHeight;
+        } else {
+          float heightStep = 15.0f; // ~15px por frame
+          if (g_FlyoutCurrentHeight < targetHeight) {
+            g_FlyoutCurrentHeight += heightStep;
+            if (g_FlyoutCurrentHeight > targetHeight) g_FlyoutCurrentHeight = targetHeight;
+            stillAnimating = true;
+          } else if (g_FlyoutCurrentHeight > targetHeight) {
+            g_FlyoutCurrentHeight -= heightStep;
+            if (g_FlyoutCurrentHeight < targetHeight) g_FlyoutCurrentHeight = targetHeight;
+            stillAnimating = true;
+          }
+        }
+      }
 
       if (g_FlyoutState == 0) {
         KillTimer(hwnd, IDT_FLYOUT_ANIMATION);
@@ -4445,6 +4807,16 @@ LRESULT CALLBACK FlyoutWndProc(HWND hwnd, UINT msg, WPARAM wParam,
         ShowWindow(hwnd, SW_HIDE);
         ShowWindow(g_hFlyoutChildWindow, SW_HIDE);
         ResetFlyoutPositionCache();
+
+        g_SettingsCardOpen = false;
+        g_SettingsState = 0;
+        g_SettingsOpenProgress = 0.0f;
+        g_SettingsAlpha = 0;
+        if (g_hSettingsWindow) {
+          ShowWindow(g_hSettingsWindow, SW_HIDE);
+          ShowWindow(g_hSettingsChildWindow, SW_HIDE);
+          KillTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION);
+        }
       } else {
         UpdateFlyoutWindow();
         if (!stillAnimating && g_FlyoutState == 2) {
@@ -4462,11 +4834,31 @@ LRESULT CALLBACK FlyoutWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
         bool overFlyout = PtInRect(&rcFlyout, pt);
         bool overWidget = PtInRect(&rcWidget, pt);
+        bool overSettings = false;
+        if (g_hSettingsWindow && IsWindowVisible(g_hSettingsWindow)) {
+          RECT rcSettings;
+          GetWindowRect(g_hSettingsWindow, &rcSettings);
+          overSettings = PtInRect(&rcSettings, pt);
+        }
 
-        if (!overFlyout && !overWidget && !g_FlyoutPinned) {
+        if (!overFlyout && !overWidget && !overSettings && !g_FlyoutPinned) {
           g_FlyoutMouseOutSeconds++;
           if (g_FlyoutMouseOutSeconds >= 10) {
             g_FlyoutMouseOutSeconds = 0;
+            if (g_SettingsCardOpen) {
+              g_SettingsCardOpen = false;
+              if (IsAnimationEnabled()) {
+                g_SettingsState = 3;
+                SetTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION, 15, NULL);
+              } else {
+                g_SettingsState = 0;
+                g_SettingsOpenProgress = 0.0f;
+                g_SettingsAlpha = 0;
+                ShowWindow(g_hSettingsWindow, SW_HIDE);
+                ShowWindow(g_hSettingsChildWindow, SW_HIDE);
+                KillTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION);
+              }
+            }
             if (IsAnimationEnabled()) {
               g_FlyoutState = 3;
               SetTimer(hwnd, IDT_FLYOUT_ANIMATION, 15, NULL);
@@ -4593,6 +4985,7 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     UpdateMediaInfo();
     SyncProgressTimer(hwnd);
     RegisterTaskbarHook(hwnd);
+    SetTimer(hwnd, IDT_LAYOUT_POLL, 1000, NULL);
     return 0;
 
   case WM_ERASEBKGND:
@@ -4604,6 +4997,7 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 
   case WM_DESTROY:
     RemoveTrayIcon();
+    KillTimer(hwnd, IDT_LAYOUT_POLL);
     if (g_TaskbarHook) {
       UnhookWinEvent(g_TaskbarHook);
       g_TaskbarHook = nullptr;
@@ -4675,6 +5069,7 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     UpdateAccentColorCache();
     UpdateAppearance(hwnd);
     RedrawLayeredWindow(hwnd);
+    PostMessage(hwnd, WM_APP + 10, 0, 0);
     if (g_hFlyoutWindow) {
       UpdateFlyoutComposition(g_hFlyoutWindow);
       if (g_FlyoutState == 1 || g_FlyoutState == 2) {
@@ -4712,6 +5107,9 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     return 0;
 
   case WM_TIMER:
+    if (wParam == IDT_LAYOUT_POLL) {
+      PostMessage(hwnd, WM_APP + 10, 0, 0);
+    }
     if (wParam == IDT_POLL_MEDIA) {
       UpdateMediaInfo();
       SyncProgressTimer(hwnd);
@@ -4850,10 +5248,10 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
     RECT rc;
     GetWindowRect(hTaskbar, &rc);
 
-    int x = rc.left + g_Settings.offsetX;
+    int widgetsOffset = GetWidgetsOffset(hTaskbar);
+    int x = rc.left + g_Settings.offsetX + widgetsOffset;
     int taskbarHeight = rc.bottom - rc.top;
-    int y = rc.top + (taskbarHeight / 2) - (g_Settings.height / 2) +
-            g_Settings.offsetY;
+    int y = rc.top + (taskbarHeight - g_Settings.height) / 2 + g_Settings.offsetY;
 
     RECT myRc;
     GetWindowRect(hwnd, &myRc);
@@ -4869,18 +5267,25 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
   case WM_MOUSEMOVE: {
     int x = LOWORD(lParam);
     int y = HIWORD(lParam);
-    int artSize = g_Settings.height - 12;
-    double scale = g_Settings.buttonScale;
+    
+    RECT rcClient;
+    GetClientRect(hwnd, &rcClient);
+    int currentHeight = rcClient.bottom - rcClient.top;
 
-    int startControlX = 6 + artSize + (int)(20 * scale);
-    float gap = 32.0f * (float)scale;
+    int artSize = currentHeight - 12;
+    float scale = (float)g_Settings.buttonScale;
+
+    int startControlX = 6 + artSize + (int)(20.0f * scale);
+    float gap = 34.0f * scale;
     float pX = (float)startControlX;
     float plX = pX + gap;
     float nX = plX + gap;
-    float radius = 14.0f * (float)scale;
+    float radius = 16.0f * scale;
 
     int newState = 0;
-    if (y > 4 && y < g_Settings.height - 4) {
+    float hoverH = (float)currentHeight - 8.0f;
+    float hoverY = 4.0f;
+    if (y >= hoverY && y <= hoverY + hoverH) {
       if (x >= pX - radius && x <= pX + radius)
         newState = 1;
       else if (x >= plX - radius && x <= plX + radius)
@@ -4969,6 +5374,20 @@ LRESULT CALLBACK MediaWndProc(HWND hwnd, UINT msg, WPARAM wParam,
           }
           SetTimer(g_hFlyoutWindow, IDT_FLYOUT_MOUSE_CHECK, 200, NULL);
         } else {
+          if (g_SettingsCardOpen) {
+            g_SettingsCardOpen = false;
+            if (IsAnimationEnabled()) {
+              g_SettingsState = 3;
+              SetTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION, 15, NULL);
+            } else {
+              g_SettingsState = 0;
+              g_SettingsOpenProgress = 0.0f;
+              g_SettingsAlpha = 0;
+              ShowWindow(g_hSettingsWindow, SW_HIDE);
+              ShowWindow(g_hSettingsChildWindow, SW_HIDE);
+              KillTimer(g_hSettingsWindow, IDT_FLYOUT_ANIMATION);
+            }
+          }
           if (IsAnimationEnabled()) {
             g_FlyoutState = 3;
             SetTimer(g_hFlyoutWindow, IDT_FLYOUT_ANIMATION, 15, NULL);
@@ -5042,6 +5461,20 @@ void MediaThread() {
   wcFlyoutChild.hCursor = LoadCursor(NULL, IDC_ARROW);
   RegisterClass(&wcFlyoutChild);
 
+  WNDCLASS wcSettings = {0};
+  wcSettings.lpfnWndProc = SettingsWndProc;
+  wcSettings.hInstance = GetModuleHandle(NULL);
+  wcSettings.lpszClassName = TEXT("TaskbarMusicPlayerNative_Settings");
+  wcSettings.hCursor = LoadCursor(NULL, IDC_ARROW);
+  RegisterClass(&wcSettings);
+
+  WNDCLASS wcSettingsChild = {0};
+  wcSettingsChild.lpfnWndProc = SettingsChildWndProc;
+  wcSettingsChild.hInstance = GetModuleHandle(NULL);
+  wcSettingsChild.lpszClassName = TEXT("TaskbarMusicPlayerNative_SettingsChild");
+  wcSettingsChild.hCursor = LoadCursor(NULL, IDC_ARROW);
+  RegisterClass(&wcSettingsChild);
+
   Log(L"Creating window using CreateWindowEx");
   HWND hTaskbar = FindWindow(L"Shell_TrayWnd", nullptr);
   g_hMediaWindow = CreateWindowEx(
@@ -5056,10 +5489,22 @@ void MediaThread() {
                        WS_POPUP | WS_CLIPCHILDREN, 0, 0, 360, 400,
                        g_hMediaWindow, NULL, wcFlyout.hInstance, NULL);
 
-      g_hFlyoutChildWindow = CreateWindowEx(
-          WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST, wcFlyoutChild.lpszClassName,
-          TEXT("MusicPlayerFlyoutChild"), WS_POPUP, 0, 0, 360, 400,
-          g_hFlyoutWindow, NULL, wcFlyoutChild.hInstance, NULL);
+    g_hFlyoutChildWindow = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST, wcFlyoutChild.lpszClassName,
+        TEXT("MusicPlayerFlyoutChild"), WS_POPUP, 0, 0, 360, 400,
+        g_hFlyoutWindow, NULL, wcFlyoutChild.hInstance, NULL);
+
+    g_hSettingsWindow = CreateWindowEx(
+        WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+        wcSettings.lpszClassName, TEXT("MusicPlayerSettings"),
+        WS_POPUP | WS_CLIPCHILDREN, 0, 0, 360, 380,
+        g_hMediaWindow, NULL, wcSettings.hInstance, NULL);
+
+    g_hSettingsChildWindow = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+        wcSettingsChild.lpszClassName, TEXT("MusicPlayerSettingsChild"),
+        WS_POPUP, 0, 0, 360, 380,
+        g_hSettingsWindow, NULL, wcSettingsChild.hInstance, NULL);
   }
 
   MSG msg;
@@ -5104,6 +5549,8 @@ void MediaThread() {
   UnregisterClass(wc.lpszClassName, wc.hInstance);
   UnregisterClass(wcFlyout.lpszClassName, wcFlyout.hInstance);
   UnregisterClass(wcFlyoutChild.lpszClassName, wcFlyoutChild.hInstance);
+  UnregisterClass(wcSettings.lpszClassName, wcSettings.hInstance);
+  UnregisterClass(wcSettingsChild.lpszClassName, wcSettingsChild.hInstance);
   GdiplusShutdown(gdiplusToken);
   winrt::uninit_apartment();
 }
